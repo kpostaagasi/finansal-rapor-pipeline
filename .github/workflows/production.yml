@@ -13,43 +13,26 @@ permissions:
 jobs:
   uretim:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
       - name: Bağımlılıklar
         run: pip install -r requirements.txt
-
-      - name: TEFAS + emtia cache geri yükle (ilk koşuda yoksa bootstrap)
-        uses: actions/cache@v4
-        with:
-          path: |
-            2_tefas_altin_akis/fon_veri.json
-            2_tefas_altin_akis/akis_veri.json
-            3_tefas_fon_akis_maili/fon_veri.json
-            3_tefas_fon_akis_maili/altin_veri.json
-            1_emtia_tahvil_maili/output/
-          key: rapor-cache-${{ github.run_id }}
-          restore-keys: |
-            rapor-cache-
-
+      # TEFAS tarihçesi repo'da seed'li (Mac'ten tek seferlik): bootstrap yok,
+      # üreticiler seed'den başlayıp eksik günleri çeker (~1-2 dk).
       - name: Üreticiler (mail kapalı — dry-run)
         run: |
           python 1_emtia_tahvil_maili/gunluk_mail.py --dry-run
           python 3_tefas_fon_akis_maili/tefas_secili.py --rapor altin
           python 3_tefas_fon_akis_maili/tefas_secili.py --rapor secili
-
       - name: Site build (index.html + report_status.json)
         run: python build_site.py
-
       - name: Dashboard artifact build (JSON'lar)
         run: |
           python scripts/build_research_artifacts.py --source-root . --output-dir artifacts
-
       - name: Yayın dosyalarını yükle
         uses: actions/upload-artifact@v4
         with:
@@ -69,20 +52,18 @@ jobs:
   yayin-pages:
     needs: uretim
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
           repository: kpostaagasi/finansal-raporlar
           ssh-key: ${{ secrets.RAPORLAR_DEPLOY_KEY }}
           ref: main
-
       - uses: actions/download-artifact@v4
         with:
           name: yayin-dosyalari
           path: /tmp/yayin
-
-      - name: HTML + JSON + site dosyalarını kopyala, commit, push
+      - name: Dosyaları kopyala + commit + push
         run: |
           cp /tmp/yayin/1_emtia_tahvil_maili/emtia_futures.html ./
           cp /tmp/yayin/2_tefas_altin_akis/tefas_net_akis.html ./
@@ -97,9 +78,8 @@ jobs:
           git config user.email "pipeline@users.noreply.github.com"
           git add -A
           if git diff --cached --quiet; then
-            echo "Değişiklik yok — push atlanıyor."
+            echo "Değişiklik yok."
           else
             git commit -m "Raporlar güncellendi ($(date +'%d.%m.%Y %H:%M'))"
             git push origin main
-            echo "Pages güncellendi."
           fi
