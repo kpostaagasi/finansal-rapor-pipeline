@@ -22,6 +22,8 @@ jobs:
       # TEFAS tarihçesi repo'da seed'li (Mac'ten tek seferlik): bootstrap yok,
       # üreticiler seed'den başlayıp eksik günleri çeker (~1-2 dk).
       - name: Üreticiler (mail kapalı — dry-run)
+        env:
+          TZ: Europe/Istanbul
         run: |
           python 1_emtia_tahvil_maili/gunluk_mail.py --dry-run
           python 3_tefas_fon_akis_maili/tefas_secili.py --rapor altin
