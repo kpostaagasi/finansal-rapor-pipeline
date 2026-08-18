@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TEFAS Altın Fonlarına Net Akış</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --baseline: #c3c2b7;
+    --border: rgba(11,11,11,0.10);
+    --yf: #2a78d6;
+    --eyf: #eb6834;
+    --pos: #006300;
+    --neg: #d03b3b;
+    --wash: rgba(11,11,11,0.045);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface: #1a1a19;
+      --ink: #ffffff;
+      --ink-2: #c3c2b7;
+      --muted: #898781;
+      --grid: #2c2c2a;
+      --baseline: #383835;
+      --border: rgba(255,255,255,0.10);
+      --yf: #3987e5;
+      --eyf: #d95926;
+      --pos: #0ca30c;
+      --neg: #e66767;
+      --wash: rgba(255,255,255,0.06);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255,255,255,0.10);
+    --yf: #3987e5;
+    --eyf: #d95926;
+    --pos: #0ca30c;
+    --neg: #e66767;
+    --wash: rgba(255,255,255,0.06);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--page);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.45;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 20px 48px; display: flex; flex-direction: column; gap: 16px; }
+
+  header h1 { font-size: 22px; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
+  header p { margin: 4px 0 0; color: var(--ink-2); font-size: 13.5px; }
+
+  .filters { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .filters .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-right: 4px; }
+  .filters button {
+    font: inherit; font-size: 13px; color: var(--ink-2);
+    background: transparent; border: 1px solid var(--border); border-radius: 7px;
+    padding: 5px 12px; cursor: pointer;
+  }
+  .filters button:hover { background: var(--wash); }
+  .filters button:focus-visible { outline: 2px solid var(--yf); outline-offset: 1px; }
+  .filters button[aria-pressed="true"] { color: var(--ink); border-color: var(--ink-2); font-weight: 600; background: var(--wash); }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .tile .lbl { font-size: 12.5px; color: var(--ink-2); display: flex; align-items: center; gap: 7px; }
+  .tile .key { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .tile .val { font-size: 26px; font-weight: 650; margin-top: 4px; }
+  .tile .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .tile .val.up { color: var(--pos); }
+  .tile .val.down { color: var(--neg); }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 16px 10px; }
+  .card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .card-head h2 { font-size: 15px; font-weight: 600; margin: 0; }
+  .legend { display: flex; gap: 16px; font-size: 12.5px; color: var(--ink-2); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+  .plot { position: relative; height: 380px; margin-top: 8px; }
+  .plot canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .tooltip {
+    position: absolute; pointer-events: none; display: none; z-index: 3;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.14);
+    padding: 8px 11px; font-size: 12.5px; min-width: 168px;
+  }
+  .tooltip .tt-date { color: var(--ink-2); font-weight: 600; margin-bottom: 5px; }
+  .tooltip .tt-row { display: flex; align-items: center; gap: 7px; margin-top: 3px; }
+  .tooltip .tt-key { width: 12px; height: 3px; border-radius: 2px; flex: none; }
+  .tooltip .tt-name { color: var(--ink-2); flex: 1; }
+  .tooltip .tt-val { font-weight: 650; font-variant-numeric: tabular-nums; }
+
+  details.tbl { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+  details.tbl summary { padding: 11px 16px; cursor: pointer; font-size: 13.5px; color: var(--ink-2); }
+  details.tbl summary:focus-visible { outline: 2px solid var(--yf); outline-offset: -2px; }
+  .tbl-scroll { max-height: 420px; overflow: auto; border-top: 1px solid var(--border); }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  th, td { padding: 5px 16px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: var(--surface); }
+  thead th { position: sticky; top: 0; background: var(--surface); color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--grid); }
+  tbody tr:nth-child(even) { background: var(--wash); }
+  tbody tr:nth-child(even) td:first-child { background: var(--page); }
+  td.neg { color: var(--neg); }
+
+  footer { font-size: 12px; color: var(--muted); }
+  footer b { color: var(--ink-2); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>TEFAS Altın Fonlarına Net Akış</h1>
+    <p id="subtitle">Altın yatırım fonları (__YF_N__ fon) ve altın emeklilik fonları (__EYF_N__ fon) — net giriş/çıkış, TL</p>
+  </header>
+
+  <div class="filters" role="group" aria-label="Tarih aralığı">
+    <span class="lbl">Tarih aralığı</span>
+    <button data-days="30">Son 30 gün</button>
+    <button data-days="90" aria-pressed="true">Son 90 gün</button>
+    <button data-days="180">Son 6 ay</button>
+    <button data-days="365">Son 1 yıl</button>
+    <button data-days="0">Tümü</button>
+  </div>
+
+  <div class="filters" role="group" aria-label="Periyot">
+    <span class="lbl">Periyot</span>
+    <button data-agg="d" aria-pressed="true">Günlük</button>
+    <button data-agg="w">Haftalık</button>
+    <button data-agg="m">Aylık</button>
+  </div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2 id="chartTitle">Günlük net akış</h2>
+      <div class="legend">
+        <span><i style="background:var(--yf)"></i>Altın Yatırım Fonları (YF)</span>
+        <span><i style="background:var(--eyf)"></i>Altın Emeklilik Fonları (EYF)</span>
+      </div>
+    </div>
+    <div class="plot" id="plot">
+      <canvas id="cv"></canvas>
+      <div class="tooltip" id="tt"></div>
+    </div>
+  </div>
+
+  <details class="tbl">
+    <summary id="tblSum">Veri tablosu</summary>
+    <div class="tbl-scroll"><table id="dataTable">
+      <thead><tr><th id="thPeriod">Tarih</th><th>Altın Yatırım Fonları (TL)</th><th>Altın Emeklilik Fonları (TL)</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </details>
+
+  <footer id="foot">
+    Kaynak: <b>TEFAS</b>. Net akış = (o günün tedavüldeki pay sayısı − önceki işlem gününün pay sayısı) × o günün pay fiyatı; her fon için ayrı hesaplanıp toplanmıştır.
+    Fiyat hareketinden gelen büyüklük değişimi bu tutara girmez. Haftalık ve aylık değerler, dönem içindeki günlük akışların toplamıdır.
+    <br>Kapsam: bugün işlem gören <b>__YF_N__ altın yatırım fonu</b> ve <b>__EYF_N__ altın emeklilik fonu</b>. Fon sayısı dönem boyunca sabit değildir:
+    __ILK_TARIH__'te __YF0_N__ altın yatırım ve __EYF0_N__ altın emeklilik fonu işlem görüyordu, kalanlar dönem içinde açıldı — bu yüzden dönem başındaki değerler daha az fonu kapsar.
+    Dönem içinde kapanan fonlar listede yer almadığı için çıkışları da yansımaz.
+    <br>Resmî tatillerde fiyat açıklanmaz; tatil sonrası ilk işlem gününün değeri birden fazla günün değişimini içerir.
+    Seçili aralığın ilk ve son haftası/ayı kısmi olabilir.
+  </footer>
+</div>
+
+<script>
+const REPORT_META = __REPORT_META__;
+const RAW = __RAW__;
+
+const $ = s => document.querySelector(s);
+const cv = $('#cv'), plot = $('#plot'), tt = $('#tt');
+const N = RAW.d.length;
+let rangeDays = 90;      // 0 = tümü
+let agg = 'd';           // 'd' günlük · 'w' haftalık · 'm' aylık
+let hoverIdx = -1;
+let S = [];              // ekranda çizilen periyot serisi
+
+function tok(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+const fmtDateTR = iso => { const [y,m,g] = iso.split('-'); return `${g}.${m}.${y}`; };
+const AYLAR = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
+const AYLAR_UZUN = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+const PERIYOT_AD = { d: 'Günlük', w: 'Haftalık', m: 'Aylık' };
+
+function fmtCompact(v) {
+  if (!Number.isFinite(v)) return '— hesaplanamadı';
+  const a = Math.abs(v), s = v < 0 ? '−' : '+';
+  if (a >= 1e9) return s + (a/1e9).toLocaleString('tr-TR',{maximumFractionDigits:2}) + ' mlr ₺';
+  if (a >= 1e6) return s + (a/1e6).toLocaleString('tr-TR',{maximumFractionDigits:1}) + ' mn ₺';
+  if (a >= 1e3) return s + (a/1e3).toLocaleString('tr-TR',{maximumFractionDigits:0}) + ' bin ₺';
+  return s + a.toLocaleString('tr-TR',{maximumFractionDigits:0}) + ' ₺';
+}
+function fmtAxis(v, unit) {
+  const x = v/unit.div;
+  return x.toLocaleString('tr-TR',{maximumFractionDigits: Math.abs(x) < 10 ? 1 : 0});
+}
+function fmtFull(v) {
+  if (!Number.isFinite(v)) return '—';
+  return (v < 0 ? '−' : '') + Math.abs(Math.round(v)).toLocaleString('tr-TR');
+}
+
+// --- aralık & periyot ---
+const toDate = iso => new Date(iso + 'T00:00:00Z');
+const isoOf = dt => dt.toISOString().slice(0, 10);
+
+// seçili takvim aralığının başladığı ilk veri indisi
+function ilkIndis() {
+  if (rangeDays === 0) return 0;
+  const kesim = toDate(RAW.d[N-1]);
+  kesim.setUTCDate(kesim.getUTCDate() - rangeDays + 1);
+  const k = isoOf(kesim);
+  let i = 0;
+  while (i < N && RAW.d[i] < k) i++;
+  return Math.min(i, N - 1);
+}
+
+// haftanın pazartesisi (gruplama anahtarı)
+function haftaBasi(iso) {
+  const dt = toDate(iso);
+  dt.setUTCDate(dt.getUTCDate() - ((dt.getUTCDay() + 6) % 7));
+  return isoOf(dt);
+}
+
+// günlük veriyi seçili periyoda göre toplar
+function seriKur() {
+  const from = ilkIndis();
+  const out = [];
+  let cur = null, curKey = null;
+  for (let i = from; i < N; i++) {
+    const iso = RAW.d[i];
+    const key = agg === 'd' ? iso : agg === 'w' ? haftaBasi(iso) : iso.slice(0, 7);
+    if (key !== curKey) {
+      curKey = key;
+      cur = { key, ilk: iso, son: iso, yf: 0, eyf: 0, gun: 0 };
+      out.push(cur);
+    }
+    cur.son = iso;
+    cur.yf = Number.isFinite(cur.yf) && Number.isFinite(RAW.yf[i]) ? cur.yf + RAW.yf[i] : null;
+    cur.eyf = Number.isFinite(cur.eyf) && Number.isFinite(RAW.eyf[i]) ? cur.eyf + RAW.eyf[i] : null;
+    cur.gun++;
+  }
+  return out;
+}
+
+// tooltip / tablo etiketi
+function etiket(p) {
+  if (agg === 'd') return fmtDateTR(p.ilk);
+  if (agg === 'w') return `${fmtDateTR(p.ilk)} – ${fmtDateTR(p.son)}`;
+  const [y, m] = p.key.split('-');
+  return `${AYLAR_UZUN[+m - 1]} ${y}`;
+}
+
+function niceStep(raw) {
+  const p = Math.pow(10, Math.floor(Math.log10(raw)));
+  for (const m of [1, 2, 2.5, 5, 10]) if (m*p >= raw) return m*p;
+  return 10*p;
+}
+
+let geom = null; // çizimde doldurulur; tooltip konumlama kullanır
+
+function draw() {
+  const dpr = window.devicePixelRatio || 1;
+  const W = plot.clientWidth, H = plot.clientHeight;
+  cv.width = W*dpr; cv.height = H*dpr;
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,W,H);
+
+  const n = S.length;
+  if (!n) return;
+  const padL = 56, padR = 10, padT = 10, padB = 26;
+  const pw = W - padL - padR, ph = H - padT - padB;
+
+  let lo = 0, hi = 0;
+  for (const p of S) {
+    for (const v of [p.yf, p.eyf]) {
+      if (Number.isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+    }
+  }
+  if (hi === lo) { hi = 1; lo = -1; }
+  const step = niceStep((hi - lo) / 5);
+  lo = Math.floor(lo/step)*step; hi = Math.ceil(hi/step)*step;
+  const y = v => padT + ph * (hi - v) / (hi - lo);
+
+  const unit = Math.max(Math.abs(hi), Math.abs(lo)) >= 1e9
+    ? {div:1e9, ad:'mlr ₺'} : {div:1e6, ad:'mn ₺'};
+
+  const cGrid = tok('--grid'), cBase = tok('--baseline'), cMut = tok('--muted');
+  const cYF = tok('--yf'), cEYF = tok('--eyf'), cSurf = tok('--surface'), cWash = tok('--wash');
+
+  ctx.font = '11px system-ui, -apple-system, sans-serif';
+
+  // y ızgarası + etiketler
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for (let v = lo; v <= hi + step/2; v += step) {
+    const yy = Math.round(y(v)) + 0.5;
+    ctx.strokeStyle = v === 0 ? cBase : cGrid;
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(padL, yy); ctx.lineTo(W - padR, yy); ctx.stroke();
+    ctx.fillStyle = cMut;
+    ctx.fillText(fmtAxis(v, unit), padL - 8, yy);
+  }
+  ctx.fillStyle = cMut; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+  ctx.fillText(unit.ad, 4, H - padB + 18);
+
+  // bant geometrisi: bandın %80'i çifte, %20'si bantlar arası hava
+  const band = pw / n;
+  const gap = band >= 7 ? 2 : (band >= 3 ? 1 : 0);
+  const bw = Math.max(0.8, Math.min(24, (band*0.8 - gap) / 2));
+  geom = { n, band, padL, y0: y(0) };
+
+  // hover bandı
+  if (hoverIdx >= 0 && hoverIdx < n) {
+    ctx.fillStyle = cWash;
+    ctx.fillRect(padL + hoverIdx*band, padT, band, ph);
+  }
+
+  const bar = (x, v, color) => {
+    if (!Number.isFinite(v)) return;
+    const y0 = y(0), y1 = y(v);
+    const top = Math.min(y0, y1), h = Math.abs(y1 - y0);
+    if (h < 0.5) return;
+    ctx.fillStyle = color;
+    const r = (bw >= 5 && h >= 5) ? 4 : 0;
+    if (!r) { ctx.fillRect(x, top, bw, h); return; }
+    ctx.beginPath();
+    if (v >= 0) ctx.roundRect(x, top, bw, h, [r, r, 0, 0]);
+    else        ctx.roundRect(x, top, bw, h, [0, 0, r, r]);
+    ctx.fill();
+  };
+
+  for (let i = 0; i < n; i++) {
+    const cx = padL + i*band + band/2;
+    bar(cx - bw - gap/2, S[i].yf, cYF);
+    bar(cx + gap/2, S[i].eyf, cEYF);
+  }
+
+  // x ekseni: her yeni ayın ilk barına etiket
+  ctx.fillStyle = cMut; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  let lastKey = '', lastX = -1e9;
+  const minPx = 46;
+  for (let i = 0; i < n; i++) {
+    const key = S[i].ilk.slice(0, 7);
+    if (key === lastKey) continue;
+    lastKey = key;
+    const x = padL + i*band;
+    if (x - lastX >= minPx) {
+      const [yy, mm] = key.split('-');
+      ctx.fillText(AYLAR[+mm - 1] + ' ' + yy.slice(2), x, H - padB + 8);
+      lastX = x;
+    }
+  }
+}
+
+// --- tooltip ---
+function showTT(idx, px) {
+  const p = S[idx];
+  tt.innerHTML = '';
+  const d = document.createElement('div');
+  d.className = 'tt-date';
+  d.textContent = etiket(p) + (agg === 'd' ? '' : ` · ${p.gun} işlem günü`);
+  tt.appendChild(d);
+  [['Altın Yatırım Fonları', p.yf, '--yf'], ['Altın Emeklilik Fonları', p.eyf, '--eyf']].forEach(([ad, v, cv2]) => {
+    const r = document.createElement('div'); r.className = 'tt-row';
+    const k = document.createElement('i'); k.className = 'tt-key'; k.style.background = `var(${cv2})`;
+    const nm = document.createElement('span'); nm.className = 'tt-name'; nm.textContent = ad;
+    const vl = document.createElement('span'); vl.className = 'tt-val'; vl.textContent = fmtCompact(v);
+    r.append(k, nm, vl); tt.appendChild(r);
+  });
+  tt.style.display = 'block';
+  const W = plot.clientWidth;
+  const tw = tt.offsetWidth;
+  let x = px + 14; if (x + tw > W - 4) x = px - tw - 14;
+  tt.style.left = Math.max(4, x) + 'px';
+  tt.style.top = '14px';
+}
+
+plot.addEventListener('pointermove', e => {
+  if (!geom) return;
+  const rect = plot.getBoundingClientRect();
+  const px = e.clientX - rect.left;
+  const idx = Math.floor((px - geom.padL) / geom.band);
+  if (px < geom.padL || idx < 0 || idx >= geom.n) { hideTT(); return; }
+  if (idx !== hoverIdx) { hoverIdx = idx; draw(); }
+  showTT(idx, px);
+});
+plot.addEventListener('pointerleave', hideTT);
+function hideTT() { tt.style.display = 'none'; if (hoverIdx !== -1) { hoverIdx = -1; draw(); } }
+
+// --- filtreler ---
+document.querySelectorAll('.filters').forEach(grup => {
+  grup.querySelectorAll('button').forEach(b => {
+    b.addEventListener('click', () => {
+      grup.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', 'false'));
+      b.setAttribute('aria-pressed', 'true');
+      if (b.dataset.days !== undefined) rangeDays = +b.dataset.days;
+      if (b.dataset.agg) agg = b.dataset.agg;
+      yenile();
+    });
+  });
+});
+
+function yenile() {
+  hoverIdx = -1;
+  hideTT();
+  S = seriKur();
+  $('#chartTitle').textContent = PERIYOT_AD[agg] + ' net akış';
+  $('#thPeriod').textContent = agg === 'd' ? 'Tarih' : agg === 'w' ? 'Hafta' : 'Ay';
+  $('#tblSum').textContent = `Veri tablosu — ${PERIYOT_AD[agg].toLowerCase()} (${S.length} satır)`;
+  tiles();
+  table();
+  draw();
+}
+
+// --- stat karoları (seçili aralığa göre) ---
+function tiles() {
+  const host = $('#tiles');
+  host.innerHTML = '';
+  if (!S.length) return;
+  const dönem = `${fmtDateTR(S[0].ilk)} – ${fmtDateTR(S[S.length-1].son)}`;
+  const gun = S.reduce((a, p) => a + p.gun, 0);
+  [['Altın Yatırım Fonları', 'yf', 'var(--yf)'], ['Altın Emeklilik Fonları', 'eyf', 'var(--eyf)']]
+  .forEach(([ad, key, renk]) => {
+    const toplam = S.every(p => Number.isFinite(p[key]))
+      ? S.reduce((a, p) => a + p[key], 0) : null;
+    const t = document.createElement('div'); t.className = 'tile';
+    const l = document.createElement('div'); l.className = 'lbl';
+    const k = document.createElement('i'); k.className = 'key'; k.style.background = renk;
+    l.append(k, document.createTextNode(ad + ' — dönem toplamı'));
+    const val = document.createElement('div');
+    val.className = 'val ' + (Number.isFinite(toplam) ? (toplam >= 0 ? 'up' : 'down') : '');
+    val.textContent = fmtCompact(toplam);
+    const sub = document.createElement('div'); sub.className = 'sub';
+    sub.textContent = Number.isFinite(toplam)
+      ? `${dönem} · ${gun} işlem günü · ${toplam >= 0 ? 'net giriş' : 'net çıkış'}`
+      : `${dönem} · ${gun} işlem günü · eksik gözlem nedeniyle hesaplanmadı`;
+    t.append(l, val, sub); host.appendChild(t);
+  });
+}
+
+// --- tablo (seçili aralık ve periyot) ---
+function table() {
+  const tb = $('#dataTable tbody');
+  tb.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  for (let i = S.length - 1; i >= 0; i--) {
+    const p = S[i];
+    const tr = document.createElement('tr');
+    const td0 = document.createElement('td'); td0.textContent = etiket(p);
+    const td1 = document.createElement('td'); td1.textContent = fmtFull(p.yf);
+    if (p.yf < 0) td1.className = 'neg';
+    const td2 = document.createElement('td'); td2.textContent = fmtFull(p.eyf);
+    if (p.eyf < 0) td2.className = 'neg';
+    tr.append(td0, td1, td2); frag.appendChild(tr);
+  }
+  tb.appendChild(frag);
+}
+
+// --- tema & boyut değişimi ---
+new ResizeObserver(() => draw()).observe(plot);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => draw());
+new MutationObserver(() => draw()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+$('#subtitle').textContent =
+  `Altın yatırım fonları (__YF_N__ fon) ve altın emeklilik fonları (__EYF_N__ fon) — net giriş/çıkış, TL · ` +
+  `${fmtDateTR(RAW.d[0])} – ${fmtDateTR(RAW.d[N-1])}`;
+
+yenile();
+</script>
+</body>
+</html>

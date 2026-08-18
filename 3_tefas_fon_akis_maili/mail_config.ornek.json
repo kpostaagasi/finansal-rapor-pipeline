@@ -1,0 +1,19 @@
+{
+  "allow_publish": false,
+  "allow_send": false,
+  "sender": "gonderen@example.com",
+  "sender_name": "Ad Soyad",
+  "recipients": [
+    "alici1@example.com",
+    "alici2@example.com"
+  ],
+  "smtp_host": "smtp.gmail.com",
+  "smtp_port": 587,
+  "keychain_service": "model_portfoy_smtp",
+  "subject": "TEFAS Fon Akış Raporları",
+  "github_repo": "KULLANICI/DEPO",
+  "raporlar": [
+    "altin",
+    "secili"
+  ]
+}

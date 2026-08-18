@@ -1,0 +1,17 @@
+{
+  "ad": "secili",
+  "baslik": "TEFAS Seçili Fonlara Net Akış",
+  "kapsam": {
+    "tip": "liste",
+    "dosya": "fonlar.json"
+  },
+  "fon_tipleri": [
+    "YAT"
+  ],
+  "cache": "fon_veri.json",
+  "html": "tefas_secili_akis.html",
+  "desktop": "~/Documents/TEFAS_Secili_Fonlar_Akis.html",
+  "github_path": "tefas_secili_akis.html",
+  "url": "https://kpostaagasi.github.io/finansal-raporlar/tefas_secili_akis.html",
+  "mail_ad": "TEFAS Seçili Fonlara Net Akış"
+}

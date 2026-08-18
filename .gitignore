@@ -1,0 +1,30 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Yerel kimlik ve dağıtım ayarları
+**/mail_config.json
+
+# Üretilen raporlar, cache ve durum dosyaları
+site/
+1_emtia_tahvil_maili/emtia_futures.html
+1_emtia_tahvil_maili/output/
+2_tefas_altin_akis/akis_veri.json
+2_tefas_altin_akis/fon_veri.json
+2_tefas_altin_akis/tefas_net_akis.html
+3_tefas_fon_akis_maili/altin_veri.json
+3_tefas_fon_akis_maili/fon_veri.json
+3_tefas_fon_akis_maili/tefas_altin_akis.html
+3_tefas_fon_akis_maili/tefas_secili_akis.html
+3_tefas_fon_akis_maili/output/
+5_iran_izleme/state.json
+
+# Hermes yerel plan dosyaları
+.hermes/
+
+# Mail config yedekleri (gerçek değer içerir)
+**/mail_config.json.test-*

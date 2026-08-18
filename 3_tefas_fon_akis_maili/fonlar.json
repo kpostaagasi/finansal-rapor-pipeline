@@ -1,0 +1,5 @@
+{
+  "_not": "Rapora girecek doğrulanmış seçili fon kodları (PDR ve RTA 18.08.2026'da çıkarıldı; 15 fon).",
+  "fonlar": ["TLY", "PHE", "TP2", "PBR", "ZFB", "ZFZ", "RBH",
+             "BGP", "PPB", "DLY", "PNU", "PRY", "TGR", "ZBJ", "PRD"]
+}

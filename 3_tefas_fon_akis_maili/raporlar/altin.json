@@ -1,0 +1,17 @@
+{
+  "ad": "altin",
+  "baslik": "TEFAS Altın Fonlarına Net Akış (fon bazında)",
+  "kapsam": {
+    "tip": "altin"
+  },
+  "fon_tipleri": [
+    "YAT",
+    "EMK"
+  ],
+  "cache": "altin_veri.json",
+  "html": "tefas_altin_akis.html",
+  "desktop": "~/Documents/TEFAS_Altin_Fonlari_Fon_Bazinda_Akis.html",
+  "github_path": "tefas_altin_fon_bazinda.html",
+  "url": "https://kpostaagasi.github.io/finansal-raporlar/tefas_altin_fon_bazinda.html",
+  "mail_ad": "TEFAS Altın Fonlarına Net Akış (fon bazında)"
+}
