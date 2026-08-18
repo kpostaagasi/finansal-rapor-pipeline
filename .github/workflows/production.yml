@@ -1,0 +1,130 @@
+name: Günlük rapor üretimi + yayın (Mac'siz)
+
+# Hazırlık tamamlanınca schedule açılır (08:00 UTC = 11:00 TRT, hafta içi):
+# on:
+#   schedule:
+#     - cron: "0 8 * * 1-5"
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  uretim:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Bağımlılıklar
+        run: pip install -r requirements.txt
+
+      - name: TEFAS + emtia cache geri yükle (ilk koşuda yoksa bootstrap)
+        uses: actions/cache@v4
+        with:
+          path: |
+            2_tefas_altin_akis/fon_veri.json
+            2_tefas_altin_akis/akis_veri.json
+            3_tefas_fon_akis_maili/fon_veri.json
+            3_tefas_fon_akis_maili/altin_veri.json
+            1_emtia_tahvil_maili/output/
+          key: rapor-cache-${{ github.run_id }}
+          restore-keys: |
+            rapor-cache-
+
+      - name: Üreticiler (mail kapalı — dry-run)
+        run: |
+          python 1_emtia_tahvil_maili/gunluk_mail.py --dry-run
+          python 3_tefas_fon_akis_maili/tefas_secili.py --rapor altin
+          python 3_tefas_fon_akis_maili/tefas_secili.py --rapor secili
+
+      - name: Site build (index.html + report_status.json)
+        run: python build_site.py
+
+      - name: Raporları yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapor-html
+          if-no-files-found: error
+          path: |
+            1_emtia_tahvil_maili/emtia_futures.html
+            2_tefas_altin_akis/tefas_net_akis.html
+            3_tefas_fon_akis_maili/tefas_altin_akis.html
+            3_tefas_fon_akis_maili/tefas_secili_akis.html
+            site/index.html
+            site/report_status.json
+
+  yayin-dashboard:
+    needs: uretim
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: laraarin/bv-fon-dashboard
+          ssh-key: ${{ secrets.BVFON_DEPLOY_KEY }}
+          ref: main
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: rapor-html
+          path: /tmp/raporlar
+
+      - name: Dashboard artifact build
+        run: |
+          python scripts/build_research_artifacts.py \
+            --source-root /tmp/raporlar \
+            --output-dir Output/research_reports
+
+      - name: Değişen artifact'leri commit + push
+        run: |
+          if git diff --quiet -- Output/research_reports/; then
+            echo "Artifactlerde değişiklik yok — commit atlanıyor."
+          else
+            git config user.name "rapor-pipeline"
+            git config user.email "pipeline@users.noreply.github.com"
+            git add Output/research_reports/
+            git commit -m "Research artifactleri güncellendi ($(date +'%d.%m.%Y %H:%M'))"
+            git push origin main
+            echo "Artifact'ler push edildi."
+          fi
+
+  yayin-pages:
+    needs: uretim
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: kpostaagasi/finansal-raporlar
+          ssh-key: ${{ secrets.RAPORLAR_DEPLOY_KEY }}
+          ref: main
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: rapor-html
+          path: /tmp/raporlar
+
+      - name: HTML'leri Pages repo'suna kopyala + commit + push
+        run: |
+          cp /tmp/raporlar/1_emtia_tahvil_maili/emtia_futures.html ./
+          cp /tmp/raporlar/2_tefas_altin_akis/tefas_net_akis.html ./
+          cp /tmp/raporlar/3_tefas_fon_akis_maili/tefas_altin_akis.html ./
+          cp /tmp/raporlar/3_tefas_fon_akis_maili/tefas_secili_akis.html ./
+          cp /tmp/raporlar/site/index.html ./
+          cp /tmp/raporlar/site/report_status.json ./
+          git config user.name "rapor-pipeline"
+          git config user.email "pipeline@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Değişiklik yok — push atlanıyor."
+          else
+            git commit -m "Raporlar güncellendi ($(date +'%d.%m.%Y %H:%M'))"
+            git push origin main
+            echo "Pages güncellendi."
+          fi
