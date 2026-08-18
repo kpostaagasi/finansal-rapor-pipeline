@@ -1,6 +1,6 @@
 name: Günlük rapor üretimi + yayın (Mac'siz)
 
-# Hazırlık tamamlanınca schedule açılır (08:00 UTC = 11:00 TRT, hafta içi):
+# Test başarılı olunca schedule açılır (08:00 UTC = 11:00 TRT, hafta içi):
 # on:
 #   schedule:
 #     - cron: "0 8 * * 1-5"
@@ -46,10 +46,14 @@ jobs:
       - name: Site build (index.html + report_status.json)
         run: python build_site.py
 
-      - name: Raporları yükle
+      - name: Dashboard artifact build (JSON'lar)
+        run: |
+          python scripts/build_research_artifacts.py --source-root . --output-dir artifacts
+
+      - name: Yayın dosyalarını yükle
         uses: actions/upload-artifact@v4
         with:
-          name: rapor-html
+          name: yayin-dosyalari
           if-no-files-found: error
           path: |
             1_emtia_tahvil_maili/emtia_futures.html
@@ -58,41 +62,9 @@ jobs:
             3_tefas_fon_akis_maili/tefas_secili_akis.html
             site/index.html
             site/report_status.json
-
-  yayin-dashboard:
-    needs: uretim
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: laraarin/bv-fon-dashboard
-          ssh-key: ${{ secrets.BVFON_DEPLOY_KEY }}
-          ref: main
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: rapor-html
-          path: /tmp/raporlar
-
-      - name: Dashboard artifact build
-        run: |
-          python scripts/build_research_artifacts.py \
-            --source-root /tmp/raporlar \
-            --output-dir Output/research_reports
-
-      - name: Değişen artifact'leri commit + push
-        run: |
-          if git diff --quiet -- Output/research_reports/; then
-            echo "Artifactlerde değişiklik yok — commit atlanıyor."
-          else
-            git config user.name "rapor-pipeline"
-            git config user.email "pipeline@users.noreply.github.com"
-            git add Output/research_reports/
-            git commit -m "Research artifactleri güncellendi ($(date +'%d.%m.%Y %H:%M'))"
-            git push origin main
-            echo "Artifact'ler push edildi."
-          fi
+            artifacts/fund_flows.json
+            artifacts/commodities_treasury.json
+            artifacts/manifest.json
 
   yayin-pages:
     needs: uretim
@@ -107,17 +79,20 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: rapor-html
-          path: /tmp/raporlar
+          name: yayin-dosyalari
+          path: /tmp/yayin
 
-      - name: HTML'leri Pages repo'suna kopyala + commit + push
+      - name: HTML + JSON + site dosyalarını kopyala, commit, push
         run: |
-          cp /tmp/raporlar/1_emtia_tahvil_maili/emtia_futures.html ./
-          cp /tmp/raporlar/2_tefas_altin_akis/tefas_net_akis.html ./
-          cp /tmp/raporlar/3_tefas_fon_akis_maili/tefas_altin_akis.html ./
-          cp /tmp/raporlar/3_tefas_fon_akis_maili/tefas_secili_akis.html ./
-          cp /tmp/raporlar/site/index.html ./
-          cp /tmp/raporlar/site/report_status.json ./
+          cp /tmp/yayin/1_emtia_tahvil_maili/emtia_futures.html ./
+          cp /tmp/yayin/2_tefas_altin_akis/tefas_net_akis.html ./
+          cp /tmp/yayin/3_tefas_fon_akis_maili/tefas_altin_akis.html ./
+          cp /tmp/yayin/3_tefas_fon_akis_maili/tefas_secili_akis.html ./
+          cp /tmp/yayin/site/index.html ./
+          cp /tmp/yayin/site/report_status.json ./
+          cp /tmp/yayin/artifacts/fund_flows.json ./
+          cp /tmp/yayin/artifacts/commodities_treasury.json ./
+          cp /tmp/yayin/artifacts/manifest.json ./
           git config user.name "rapor-pipeline"
           git config user.email "pipeline@users.noreply.github.com"
           git add -A
