@@ -11,10 +11,10 @@ class SelectedFundConfigTests(unittest.TestCase):
     def test_selected_funds_match_the_verified_legacy_watchlist(self):
         configured = json.loads(CONFIG.read_text(encoding="utf-8"))["fonlar"]
         expected = {
-            "TLY", "PHE", "PDR", "TP2", "PBR", "ZFB", "ZFZ", "RBH", "RTA",
+            "TLY", "PHE", "TP2", "PBR", "ZFB", "ZFZ", "RBH",
             "BGP", "PPB", "DLY", "PNU", "PRY", "TGR", "ZBJ", "PRD",
         }
-        self.assertEqual(len(configured), 17)
+        self.assertEqual(len(configured), 15)
         self.assertEqual(set(configured), expected)
 
 
