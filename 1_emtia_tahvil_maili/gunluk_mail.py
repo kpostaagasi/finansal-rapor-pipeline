@@ -49,6 +49,8 @@ def ssl_context():
 
 
 def load_config():
+    if not os.path.exists(CONFIG):
+        return {}
     with open(CONFIG, encoding="utf-8") as f:
         return json.load(f)
 
@@ -142,6 +144,9 @@ def generate_report():
 def generate_tefas(cfg):
     """tefas_akis.py'yi çalıştırır (TEFAS'tan son günleri çekip HTML'i tazeler)."""
     script = cfg.get("tefas_script")
+    if not script:
+        # Runner (GitHub Actions) mail config'siz çalışır; varsayılan repo içi yol.
+        script = os.path.join(HERE, "..", "2_tefas_altin_akis", "tefas_akis.py")
     if not script or not os.path.exists(script):
         log("UYARI: tefas_akis.py bulunamadı, TEFAS raporu atlanıyor")
         return False
@@ -280,7 +285,10 @@ def main():
 
     if dry or no_push:
         mod = "DRY-RUN" if dry else "NO-PUSH"
-        log(f"[{mod}] yükleme/mail yok. Alıcılar: {', '.join(cfg['recipients'])} | Konu: {cfg['subject']}")
+        log(
+            f"[{mod}] yükleme/mail yok. "
+            f"Alıcılar: {', '.join(cfg.get('recipients', []))} | Konu: {cfg.get('subject', '-')}"
+        )
         return 0
 
     if not allow_publish and not example:
