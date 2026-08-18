@@ -19,10 +19,21 @@ EXPECTED_FILES = {
     "fund_flows.json": "fund_flows",
     "commodities_treasury.json": "commodities_treasury",
 }
-# Deployed Streamlit uygulamasında set edilirse artifact'ler bu URL'den
-# (kpostaagasi.github.io/finansal-raporlar) hash doğrulamalı çekilir.
-# Yerel geliştirmede boş kalır → mevcut yerel dosya davranışı korunur.
-REMOTE_BASE = os.environ.get("RESEARCH_ARTIFACT_URL", "").strip().rstrip("/")
+DEFAULT_ARTIFACT_URL = "https://kpostaagasi.github.io/finansal-raporlar"
+
+
+def _is_streamlit_cloud() -> bool:
+    """Streamlit Community Cloud container'ı `appuser` kullanıcısıyla çalışır."""
+    return os.environ.get("HOME", "").startswith("/home/appuser")
+
+
+# Deployed Streamlit uygulamasında artifact'ler uzak kaynaktan (Pages)
+# hash doğrulamalı çekilir; yerel geliştirmede yerel dosyalar kullanılır.
+# RESEARCH_ARTIFACT_URL ortam değişkeni her zaman bu kararı ezer.
+_remote_env = os.environ.get("RESEARCH_ARTIFACT_URL")
+if _remote_env is None:
+    _remote_env = DEFAULT_ARTIFACT_URL if _is_streamlit_cloud() else ""
+REMOTE_BASE = _remote_env.strip().rstrip("/")
 REQUIRED_FIELDS = {
     "schema_version",
     "report_type",
