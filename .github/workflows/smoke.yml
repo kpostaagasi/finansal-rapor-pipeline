@@ -1,0 +1,17 @@
+name: CI Smoke — kaynak erişim testi
+
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: TEFAS / Yahoo / Hazine erişim testi
+        run: python scripts/ci_smoke.py
