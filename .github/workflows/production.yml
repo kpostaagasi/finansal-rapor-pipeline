@@ -1,10 +1,8 @@
 name: Günlük rapor üretimi + yayın (Mac'siz)
 
-# Test başarılı olunca schedule açılır (08:00 UTC = 11:00 TRT, hafta içi):
-# on:
-#   schedule:
-#     - cron: "0 8 * * 1-5"
 on:
+  schedule:
+    - cron: "0 8 * * 1-5"
   workflow_dispatch:
 
 permissions:
