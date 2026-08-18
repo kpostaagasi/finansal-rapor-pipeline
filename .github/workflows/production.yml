@@ -30,12 +30,12 @@ jobs:
           python 3_tefas_fon_akis_maili/tefas_secili.py --rapor secili
       - name: Site build (index.html + report_status.json)
         run: python build_site.py
-      # Builder + doğrulayıcı tek kaynak: bv-fon-dashboard (Mac ile aynı sürüm).
-      # --source-root . = pipeline checkout'undaki üretilmiş HTML'ler.
+      # Builder + doğrulayıcı pipeline içinde (bv-fon-dashboard'dan senkron kopya;
+      # repo private olduğundan Actions'ta clone edilemez). --source-root . =
+      # pipeline checkout'undaki üretilmiş HTML'ler.
       - name: Dashboard artifact build (JSON'lar)
         run: |
-          git clone --depth 1 --quiet https://github.com/laraarin/bv-fon-dashboard.git /tmp/bvf
-          python /tmp/bvf/scripts/build_research_artifacts.py --source-root . --output-dir artifacts
+          python scripts/build_research_artifacts.py --source-root . --output-dir artifacts
       - name: Yayın dosyalarını yükle
         uses: actions/upload-artifact@v4
         with:
