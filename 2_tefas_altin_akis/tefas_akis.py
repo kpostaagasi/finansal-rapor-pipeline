@@ -177,7 +177,12 @@ def akislari_hesapla(fonlar, tarihler):
         for kod in onceki_kodlar & guncel_kodlar:
             pay, fiyat = fonlar[kod][t]
             toplam[t] = (toplam[t] or 0.0) + (pay - fonlar[kod][onceki][0]) * fiyat
-        if sorun[t]["missing_current"] or sorun[t]["missing_previous"]:
+        # İlk kez gözlemlenen fon (piyasaya çıkış) akış boşluğu DEĞİLDİR; akışı
+        # hesaplanamaz ama o günün toplamını iptal etmez. metadata'da görünmeye
+        # devam eder; html_uret launch_only ile recent_gap'e saymaz.
+        kopuklar = [kod for kod in (guncel_kodlar - onceki_kodlar)
+                    if min(fonlar[kod]) != t]
+        if sorun[t]["missing_current"] or kopuklar:
             toplam[t] = None
     return toplam, sayim, sorun
 

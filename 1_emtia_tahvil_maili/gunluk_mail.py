@@ -255,10 +255,9 @@ def main():
         cfg["recipients"] = [cfg["sender"]]
         cfg["subject"] = "[ÖRNEK] " + cfg["subject"]
 
-    # Hafta sonu koruması: launchd, kaçırılan cuma işini cumartesi açılışta tetikleyebiliyor.
-    if dt.date.today().weekday() >= 5 and not force and not example:
-        log(f"bugün hafta sonu ({today_tag()}), mail gönderilmiyor. Zorlamak için: --force")
-        return 0
+    # Hafta sonu koruması: raporlar üretilir; mail gönderilmez.
+    # (GH Actions her gün koşar; launchd kaçırılan cuma işini cumartesi tetikleyebilir.)
+    weekend = dt.date.today().weekday() >= 5 and not force and not example
 
     if already_sent_today() and not force and not dry and not example:
         log(f"bugün ({today_tag()}) zaten gönderilmiş, atlanıyor. Tekrar için: --force")
@@ -311,6 +310,10 @@ def main():
     if not cfg.get("allow_send", False):
         log("GÜVENLİK: allow_send=false; mail gönderimi kapalı")
         return 3
+
+    if weekend:
+        log(f"bugün hafta sonu ({today_tag()}), mail gönderilmiyor. Zorlamak için: --force")
+        return 0
 
     claimed = False
     if not example:
