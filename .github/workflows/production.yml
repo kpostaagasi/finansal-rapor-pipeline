@@ -2,8 +2,8 @@ name: Günlük rapor üretimi + yayın (Mac'siz)
 
 on:
   schedule:
-    # Her gün 10:07 TRT = 07:07 UTC (tam saat başı yoğunluğundan kaçınır)
-    - cron: "7 7 * * *"
+    # Hafta içi 11:07 TRT = 08:07 UTC (tam saat başı yoğunluğundan kaçınır)
+    - cron: "7 8 * * 1-5"
   workflow_dispatch:
 
 permissions:
