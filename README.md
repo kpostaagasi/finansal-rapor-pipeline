@@ -12,8 +12,8 @@ env -u PYTHONPATH .venv/bin/python -m pip install -r requirements.txt
 env -u PYTHONPATH .venv/bin/python verify_runtime.py
 ```
 
-Üçüncü parti bağımlılık yalnızca `requests`, `matplotlib`, `openpyxl`, `certifi` —
-gerisi standart kütüphane.
+Üçüncü parti bağımlılık yalnızca `requests`, `openpyxl`, `certifi` — gerisi
+standart kütüphane.
 
 ---
 
@@ -91,8 +91,19 @@ yayın/mail zinciri durur.
 
 **Fon evreni kuralı (kritik):** Yatırım fonu tarafı "adında ALTIN geçenler" —
 ancak **"ALTINCI"/"ON ALTINCI"** (sıra sayısı) elenir, **"GOLD"** geçenler eklenir
-ama **"GOLDEN ..."** elenir. Bu kural 48 fon veriyor ve geçmiş seriyi %0,005
-sapmayla yeniden üretiyor. Emeklilik tarafı `eyf_fonlar.json`'daki 16 fon.
+ama **"GOLDEN ..."** elenir. Bu kural 04.09.2026 itibarıyla **49 fon** veriyor ve
+geçmiş seriyi %0,005 sapmayla yeniden üretiyor. Emeklilik tarafı
+`eyf_fonlar.json`'daki 16 fon.
+
+Evren kod listesiyle değil kuralla belirlendiği için TEFAS'a çıkan yeni bir fon
+rapora kendiliğinden girer — GLL (GOLDEN GLOBAL PORTFÖY ALTIN KATILIM FONU)
+20.08.2026'da böyle eklendi; kurucu adındaki "GOLDEN" yalnızca "GOLD" dalını
+eler, unvandaki "ALTIN" fonu doğru biçimde alır. Sayının sessizce kaymasını
+`tests/test_gold_universe.py` engeller: evren değişirse test yeni/düşen kodu
+adıyla söyler, incelendikten sonra kilit güncellenir. Aynı test emeklilik
+tarafındaki elle tutulan listeyi 3. raporun TEFAS'tan tazelediği evrenle
+karşılaştırır (yeni bir altın emeklilik fonu grup raporunda sessizce eksik
+kalmasın diye).
 
 ```bash
 env -u PYTHONPATH .venv/bin/python 2_tefas_altin_akis/tefas_akis.py --bootstrap
@@ -140,9 +151,10 @@ Komut cache'leri değiştirmez; fark yoksa `0`, fon/gözlem/revizyon farkı vars
 ile çıkar ve ayrıntıları JSON olarak stdout'a yazar.
 
 - `raporlar/altin.json` — TEFAS'ın iki altın filtresinin birebir karşılığı
-  (YAT tarafı unvan kuralı 48 fon, EMK tarafı `fonTurAciklama ∈ {Altın Fonu,
+  (YAT tarafı unvan kuralı 49 fon, EMK tarafı `fonTurAciklama ∈ {Altın Fonu,
   Altın Katılım Fonu}` 16 fon). Eski grup bazlı raporla ortak 395 günde
-  **%0,000 sapmayla** aynı sonucu veriyor.
+  **%0,000 sapmayla** aynı sonucu veriyor; iki üreticinin evreni testle
+  eşitleniyor.
 - `raporlar/secili.json` + `fonlar.json` — elle seçilmiş fon listesi.
 
 ## Zamanlama

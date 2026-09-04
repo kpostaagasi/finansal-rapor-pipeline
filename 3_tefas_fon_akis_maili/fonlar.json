@@ -1,5 +1,7 @@
 {
-  "_not": "Rapora girecek doğrulanmış seçili fon kodları (PDR ve RTA 18.08.2026'da çıkarıldı; 15 fon).",
+  "_not": "Rapora girecek doğrulanmış seçili fon kodları (25 fon). Seçim kriteri: net akış büyüklüğü yüksek fonlar (yön fark etmez; giriş ve çıkış aynı derecede izlenir) + izlenen kurucuların butik/ilişki bazlı fonları. PDR ve RTA 18.08.2026'da çıkarıldı (editoryal karar; iki fon TEFAS'a veri basmaya devam ediyor). 04.09.2026'da izlenen kurucuların (Tera/SKP, Ak/AKP, Pusula/PSP, Ziraat/ZPY, Deniz/EPY) akış büyüklüğünde ilk 50'ye giren eksik fonları eklendi: THF, ODN, PAL, PCS, PPJ, TMV, PUR, YOZ, TZL, ZPR.",
   "fonlar": ["TLY", "PHE", "TP2", "PBR", "ZFB", "ZFZ", "RBH",
-             "BGP", "PPB", "DLY", "PNU", "PRY", "TGR", "ZBJ", "PRD"]
+             "BGP", "PPB", "DLY", "PNU", "PRY", "TGR", "ZBJ", "PRD",
+             "THF", "ODN", "PAL", "PCS", "PPJ", "TMV", "PUR", "YOZ",
+             "TZL", "ZPR"]
 }
