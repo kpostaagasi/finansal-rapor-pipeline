@@ -11,8 +11,8 @@ Akış:
      tarayıcısında girişsiz açılır.
   4. 4 alıcıya üç linki içeren maili SMTP ile gönderir.
 
-SMTP şifresi REPODA TUTULMAZ — macOS Keychain'den okunur (model_portfoy_smtp,
-Model Portföy otomasyonuyla aynı Gmail App Password).
+SMTP şifresi REPODA TUTULMAZ — macOS Keychain'den okunur (servis adı
+model_portfoy_smtp, Gmail App Password; tüm otomasyonlar aynı kaydı kullanır).
 
 Kullanım:
   python3 gunluk_mail.py            # tam akış (günde bir kez; kilit .last_sent)

@@ -9,8 +9,8 @@ mail_config.json'daki her rapor için (varsayılan: altin + secili):
   2. HTML'i config'teki GitHub Pages reposuna yükler.
   3. Tüm raporların linklerini tek mailde alıcılara gönderir.
 
-SMTP şifresi REPODA TUTULMAZ — macOS Keychain'den okunur (model_portfoy_smtp,
-emtia/model portföy otomasyonlarıyla aynı Gmail App Password).
+SMTP şifresi REPODA TUTULMAZ — macOS Keychain'den okunur (servis adı
+model_portfoy_smtp, Gmail App Password; tüm otomasyonlar aynı kaydı kullanır).
 
 Kullanım:
   python3 secili_mail.py            # tam akış (günde bir kez; kilit .last_sent)

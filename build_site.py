@@ -234,6 +234,9 @@ def build_site(root: Path = ROOT, site_dir: Path = SITE_DIR,
     now = now or dt.date.today()
     failures = failures or {}
     site_dir.mkdir(parents=True, exist_ok=True)
+    # Pages, alt çizgiyle başlayan yolları Jekyll ile filtreler; yayın klasörü
+    # tamamen yeniden üretilebilir olsun diye bayrak burada oluşturulur.
+    (site_dir / ".nojekyll").touch(exist_ok=True)
     cards = []
     statuses = {}
     ready = 0
