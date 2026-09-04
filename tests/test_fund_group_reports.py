@@ -180,7 +180,7 @@ class TypeScopeTests(unittest.TestCase):
             "kapsam": {"tip": "tur", "turler": {"YAT": ["Para Piyasası Şemsiye Fonu"]}},
             "fon_tipleri": ["YAT"],
         }
-        meta = self.render(cfg, lambda: self.module.html_uret(cfg, cache))
+        meta = self.render(cfg, lambda: self.module.html_uret(cfg, cache))["meta"]
         self.assertEqual(meta["untyped_count"], 1)
         self.assertEqual(meta["untyped"], ["VKR"])
         self.assertEqual(meta["count_label"], "fon")
@@ -205,13 +205,34 @@ class TypeScopeTests(unittest.TestCase):
         self.assertEqual(durum["launched"], ["NEW"])
         self.assertNotIn("NEW", durum["uncomputed"])
 
-        meta = self.render(cfg, lambda: self.module.html_uret(cfg, cache))
+        meta = self.render(cfg, lambda: self.module.html_uret(cfg, cache))["meta"]
         self.assertEqual(meta["launched"], ["NEW"])
         self.assertEqual(meta["launched_count"], 1)
         self.assertNotIn("NEW", meta["uncomputed"])
 
+    def test_fund_level_group_label_map_never_exposes_the_combined_type(self):
+        """GRUP_AD üç tipe (YAT/EMK/TUM) çıktı; fon bazlı raporların (html_uret)
+        ürettiği raw['grup'] hâlâ yalnız YAT/EMK içermeli. TUM yalnızca grup
+        toplamı raporunda (toplam_satirlari) anlamlı — buraya sızarsa fon
+        bazlı sekmelerde var olmayan bir grup adı görünür (önceki turda
+        düzeltilen sızıntının regresyonu)."""
+        self.assertEqual(set(self.module.GRUP_AD), {"YAT", "EMK", "TUM"})
+        cache = {
+            "fon": {"PRY": {"2026-09-02": [100, 1.0], "2026-09-03": [110, 2.0]}},
+            "ad": {"PRY": "PUSULA PORTFÖY PARA PİYASASI (TL) FONU"},
+            "tip": {"PRY": "YAT"},
+        }
+        cfg = {
+            "ad": "para_piyasasi",
+            "baslik": "Test",
+            "kapsam": {"tip": "tur", "turler": {"YAT": ["Para Piyasası Şemsiye Fonu"]}},
+            "fon_tipleri": ["YAT"],
+        }
+        yakalanan = self.render(cfg, lambda: self.module.html_uret(cfg, cache))
+        self.assertEqual(set(yakalanan["raw"]["grup"]), {"YAT", "EMK"})
+
     def render(self, cfg, call):
-        """html_yaz'ı yakalayıp üretilen REPORT_META'yı döndürür."""
+        """html_yaz'ı yakalar; {"meta","raw","ozet","not_"} sözlüğünü döndürür."""
         yakalanan = {}
 
         def sahte(cfg_, raw, report_meta, fon_ozet, eksik_not, gunler):
@@ -219,7 +240,7 @@ class TypeScopeTests(unittest.TestCase):
 
         with patch.object(self.module, "html_yaz", sahte):
             call()
-        return yakalanan["meta"]
+        return yakalanan
 
 
 class GroupTotalTests(unittest.TestCase):
@@ -240,13 +261,20 @@ class GroupTotalTests(unittest.TestCase):
             "tip": {"AAA": "YAT", "BBB": "YAT"},
         }
 
-    def satirlar(self, onbellek):
+    def karisik_tip_onbellegi(self, emk_bosluklu=False):
+        """kaynak_onbellegi ile aynı akış değerleri; BBB burada EMK tipinde —
+        TUM satırının gerçekten YAT+EMK'yi birleştirdiğini görmek için."""
+        onbellek = self.kaynak_onbellegi(ikinci_fon_bosluklu=emk_bosluklu)
+        onbellek["tip"]["BBB"] = "EMK"
+        return onbellek
+
+    def satirlar(self, onbellek, fon_tipleri=("YAT",)):
         cfg = {
             "ad": "gruplar",
             "kapsam": {"tip": "toplam",
                        "kaynaklar": [{"kod": "TST", "grup": "Test grubu", "rapor": "test"}]},
         }
-        alt = {"cache": "/tmp/olmayan.json", "fon_tipleri": ["YAT"]}
+        alt = {"cache": "/tmp/olmayan.json", "fon_tipleri": list(fon_tipleri)}
         with (
             patch.object(self.module, "rapor_yukle", return_value=alt),
             patch.object(self.module.os.path, "exists", return_value=True),
@@ -296,6 +324,43 @@ class GroupTotalTests(unittest.TestCase):
         self.assertEqual(seri["2026-09-03"], 10)   # CLOSED artık aralık dışı, iptal etmiyor
         self.assertEqual(seri["2026-09-04"], 10)   # NEW ilk gözlem günü, iptal etmiyor
         self.assertEqual(bosluk, 0)
+
+    def test_group_total_omits_the_combined_row_for_a_single_fund_type_source(self):
+        """`fon_tipleri` tek tip deklare eden bir kaynakta (bu sınıfın
+        fikstürleri gibi) TUM satırı üretilmemeli: YAT satırının birebir
+        kopyası olurdu. Bilinçli bir kural — sessizce ikinci bir 'TST-TUM'
+        satırı belirmesini yakalar."""
+        satirlar, _, _, _ = self.satirlar(self.kaynak_onbellegi())
+        self.assertEqual({s["anahtar"] for s in satirlar}, {"TST-YAT"})
+
+    def test_group_total_adds_a_combined_row_when_the_source_has_both_fund_types(self):
+        """Kaynakta hem YAT hem EMK varsa toplam_satirlari üçüncü bir TUM
+        satırı üretir; TUM serisi, YAT ve EMK'nin ikisi de hesaplanabildiği
+        günlerde onların toplamına eşittir."""
+        satirlar, _, _, _ = self.satirlar(
+            self.karisik_tip_onbellegi(), fon_tipleri=("YAT", "EMK")
+        )
+        by_key = {s["anahtar"]: s for s in satirlar}
+        self.assertEqual(set(by_key), {"TST-YAT", "TST-EMK", "TST-TUM"})
+        self.assertEqual(by_key["TST-TUM"]["tip"], "TUM")
+        self.assertEqual(by_key["TST-TUM"]["kodlar"], {"AAA", "BBB"})
+        for t in ("2026-09-02", "2026-09-03"):
+            self.assertEqual(
+                by_key["TST-TUM"]["seri"][t],
+                by_key["TST-YAT"]["seri"][t] + by_key["TST-EMK"]["seri"][t],
+            )
+
+    def test_group_total_combined_row_is_null_when_a_member_type_is_null(self):
+        """EMK tarafında boşluk varsa TUM da o günlerde null olmalı: YAT kısmı
+        sağlam diye TUM sessizce kısmi bir toplam üretmemeli."""
+        satirlar, _, _, _ = self.satirlar(
+            self.karisik_tip_onbellegi(emk_bosluklu=True), fon_tipleri=("YAT", "EMK")
+        )
+        by_key = {s["anahtar"]: s for s in satirlar}
+        for t in ("2026-09-02", "2026-09-03"):
+            self.assertIsNotNone(by_key["TST-YAT"]["seri"][t])
+            self.assertIsNone(by_key["TST-EMK"]["seri"][t])
+            self.assertIsNone(by_key["TST-TUM"]["seri"][t])
 
     def test_duplicate_fund_gap_across_sources_is_counted_once(self):
         """Aynı fon-gün boşluğu iki kaynak raporda da geçse (altın ⊂ kıymetli maden gibi)
@@ -511,8 +576,11 @@ class ReportConfigTests(unittest.TestCase):
 
     def test_group_report_sources_are_fund_level_reports(self):
         gruplar = json.loads((RAPOR_DIZIN / "gruplar.json").read_text(encoding="utf-8"))
+        kaynaklar = gruplar["kapsam"]["kaynaklar"]
+        self.assertEqual(len(kaynaklar), 6)
         kodlar = set()
-        for kaynak in gruplar["kapsam"]["kaynaklar"]:
+        beklenen_satir = 0
+        for kaynak in kaynaklar:
             with self.subTest(kaynak=kaynak["rapor"]):
                 yol = RAPOR_DIZIN / f"{kaynak['rapor']}.json"
                 self.assertTrue(yol.exists())
@@ -523,6 +591,13 @@ class ReportConfigTests(unittest.TestCase):
                 self.assertTrue(alt.get("cache"))
                 self.assertNotIn(kaynak["kod"], kodlar, "grup kodu tekrarı")
                 kodlar.add(kaynak["kod"])
+                # Her kaynak YAT+EMK'nin ikisini de kapsıyor: toplam_satirlari
+                # bu yüzden her kaynak için üçüncü bir birleşik TUM satırı da
+                # üretir (bkz. GroupTotalTests). Bu kontrol önbelleğe değil,
+                # yalnızca konfige bakar.
+                self.assertEqual(set(alt["fon_tipleri"]), {"YAT", "EMK"})
+                beklenen_satir += len(alt["fon_tipleri"]) + 1
+        self.assertEqual(beklenen_satir, 18)
 
     def test_group_report_declares_that_its_rows_overlap(self):
         """Tematik satırlar ayrık değil; sayfa bunu bilmeli ve toplam iddia etmemeli."""
@@ -542,6 +617,22 @@ class ReportConfigTests(unittest.TestCase):
         self.assertEqual(ortak["KIY-YAT"], {"ALT-YAT": 2})
         self.assertNotIn("PAR-YAT", ortak)          # ayrık satır
         self.assertNotIn("ALT-EMK", ortak)          # farklı fon tipi karışmaz
+
+    def test_group_report_overlap_map_includes_the_combined_row_against_its_members(self):
+        """ortak_fonlar artık tip eşitliği şartı aramıyor: X-TUM kendi YAT/EMK
+        satırlarıyla %100 örtüşür ve bu örtüşme haritada görünür olmalı. Farklı
+        fon tiplerinin (YAT/EMK) kod kümeleri zaten ayrık olduğu için bu
+        gevşeme YAT-EMK arasında sahte bir eşleşme doğurmaz."""
+        module = load_module()
+        satirlar = [
+            {"anahtar": "PAR-YAT", "tip": "YAT", "kodlar": {"PRY"}},
+            {"anahtar": "PAR-EMK", "tip": "EMK", "kodlar": {"AH1"}},
+            {"anahtar": "PAR-TUM", "tip": "TUM", "kodlar": {"PRY", "AH1"}},
+        ]
+        ortak = module.ortak_fonlar(satirlar)
+        self.assertEqual(ortak["PAR-TUM"], {"PAR-YAT": 1, "PAR-EMK": 1})
+        self.assertEqual(ortak["PAR-YAT"], {"PAR-TUM": 1})
+        self.assertEqual(ortak["PAR-EMK"], {"PAR-TUM": 1})
 
 
 if __name__ == "__main__":

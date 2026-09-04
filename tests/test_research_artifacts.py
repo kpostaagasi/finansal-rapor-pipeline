@@ -46,8 +46,7 @@ def report_html(raw: dict, expected: int, count_label: str = "fon") -> str:
 
 
 def build(module, selected_funds: dict[str, list[float]]):
-    """Dokuz raporun tamamını sentetik HTML'lerden kurar."""
-    group = report_html({"d": DATES, "yf": [1.0, 2.0], "eyf": [3.0, 4.0]}, 65)
+    """Sekiz raporun tamamını sentetik HTML'lerden kurar."""
     satirli = lambda satirlar, birim="fon": report_html(
         {
             "d": DATES,
@@ -57,7 +56,7 @@ def build(module, selected_funds: dict[str, list[float]]):
         len(satirlar),
         birim,
     )
-    sources = {"gold_total": group}
+    sources = {}
     for key in ("gold_by_fund", "precious_metals", "money_market",
                 "participation", "equity", "debt"):
         sources[key] = satirli({"AFO": [1.0, 2.0]})
@@ -96,7 +95,6 @@ class ResearchArtifactTests(unittest.TestCase):
         self.assertEqual(
             titles,
             {
-                "gold_total": "Altın Fonları Toplam Net Akış",
                 "gold_by_fund": "Altın Fonları Fon Bazında Net Akış",
                 "selected_funds": "Seçili Fonlara Net Akış",
                 "precious_metals": "Kıymetli Maden Fonlarına Net Akış",
@@ -110,11 +108,25 @@ class ResearchArtifactTests(unittest.TestCase):
 
     def test_missing_report_source_fails_closed(self):
         module = load_module()
-        sources = {"gold_total": report_html({"d": DATES, "yf": [1.0, 2.0],
-                                              "eyf": [3.0, 4.0]}, 65)}
+        sources = {
+            "gold_by_fund": report_html(
+                {"d": DATES, "f": {"AFO": [1.0, 2.0]}, "ad": {"AFO": "AFO SATIRI"}}, 1
+            )
+        }
         with self.assertRaises(ValueError) as ctx:
             module.build_fund_artifact(sources)
         self.assertIn("zorunlu rapor kaynağı eksik", str(ctx.exception))
+
+    def test_fund_reports_table_dropped_the_gold_total_chain(self):
+        """`gold_total` (Altın Toplam) research zincirinden tamamen kaldırıldı;
+        FUND_REPORTS'a `2_tefas_altin_akis/` altından bir üretici tekrar
+        eklenirse (grup serisi geri sızarsa) bu test yakalar."""
+        module = load_module()
+        keys = [key for key, _, _ in module.FUND_REPORTS]
+        self.assertNotIn("gold_total", keys)
+        self.assertEqual(len(module.FUND_REPORTS), 8)
+        for _, _, (klasor, _dosya) in module.FUND_REPORTS:
+            self.assertNotEqual(klasor, "2_tefas_altin_akis")
 
     def test_group_rows_keep_their_unit_label(self):
         module = load_module()

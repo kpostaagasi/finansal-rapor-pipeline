@@ -10,7 +10,7 @@ import urllib.request
 from numbers import Real
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Mapping
 
 
 SCHEMA_VERSION = 1
@@ -115,7 +115,7 @@ def _validate_report_metadata(value: Any, field: str) -> Mapping[str, Any]:
     return meta
 
 
-def _validate_flow_report(value: Any, field: str, group: bool) -> None:
+def _validate_flow_report(value: Any, field: str) -> None:
     report = _require_mapping(value, field)
     _require_text(report.get("title"), f"{field}.title")
     if report.get("status") not in ALLOWED_STATUS:
@@ -123,10 +123,6 @@ def _validate_flow_report(value: Any, field: str, group: bool) -> None:
     _validate_report_metadata(report.get("metadata"), f"{field}.metadata")
     series = _require_mapping(report.get("series"), f"{field}.series")
     dates = _validate_dates(series.get("d"), f"{field}.series.d")
-    if group:
-        _validate_numeric_series(series.get("yf"), len(dates), f"{field}.series.yf")
-        _validate_numeric_series(series.get("eyf"), len(dates), f"{field}.series.eyf")
-        return
     funds = _require_mapping(series.get("f"), f"{field}.series.f")
     names = _require_mapping(series.get("ad"), f"{field}.series.ad")
     if not funds:
@@ -137,12 +133,10 @@ def _validate_flow_report(value: Any, field: str, group: bool) -> None:
         _validate_numeric_series(values, len(dates), f"{field}.series.f.{code}")
 
 
-# Fon akışı artifactindeki zorunlu raporlar. `gold_total` grup serisi (yf/eyf)
-# taşır; diğerleri satır bazlı seri (f/ad) taşır — `fund_groups` satırları fon
-# değil grup olsa da yapı aynıdır, bu yüzden aynı kurallarla doğrulanır.
-GROUP_SERIES_REPORTS = ("gold_total",)
+# Fon akışı artifactindeki zorunlu raporlar. Tümü satır bazlı seri (f/ad)
+# taşır — `fund_groups` satırları fon değil grup olsa da yapı aynıdır, bu
+# yüzden aynı kurallarla doğrulanır.
 REQUIRED_FUND_REPORTS = (
-    "gold_total",
     "gold_by_fund",
     "selected_funds",
     "precious_metals",
@@ -165,11 +159,7 @@ def _validate_fund_artifact(data: Mapping[str, Any]) -> None:
     if extra:
         raise ReportContractError("beklenmeyen fon raporu: " + ", ".join(extra))
     for key in sorted(reports):
-        _validate_flow_report(
-            reports[key],
-            f"data.reports.{key}",
-            group=key in GROUP_SERIES_REPORTS,
-        )
+        _validate_flow_report(reports[key], f"data.reports.{key}")
 
 
 def _validate_market_artifact(value: Mapping[str, Any], data: Mapping[str, Any]) -> None:
@@ -459,11 +449,3 @@ def classify_metadata(
     ):
         return "partial"
     return "ready"
-
-
-def complete_total(values: Iterable[float | int | None]) -> float | int | None:
-    """Eksik hücre varsa kısmi toplam döndürmez; boş seri de hesaplanamaz."""
-    items = list(values)
-    if not items or any(value is None for value in items):
-        return None
-    return sum(value for value in items if value is not None)

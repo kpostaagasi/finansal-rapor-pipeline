@@ -439,7 +439,14 @@ def kapsam_durumu(cfg, onbellek):
 
 # --- çıktı ------------------------------------------------------------------
 
-GRUP_AD = {"YAT": "Yatırım fonları", "EMK": "Emeklilik fonları"}
+# Şablon (secili_template.html ~569-591) grup düğmelerini RAW.tip'teki tekil
+# değerlerden, etiketleri de RAW.grup'tan (bu sözlük) üretiyor; yeni bir tip
+# eklemek şablonda değişiklik gerektirmeden otomatik üçüncü düğme olarak çıkar.
+GRUP_AD = {
+    "YAT": "Yatırım fonları",
+    "EMK": "Emeklilik fonları",
+    "TUM": "Yatırım + emeklilik",
+}
 
 
 def html_yaz(cfg, raw, report_meta, fon_ozet, eksik_not, gunler):
@@ -499,7 +506,10 @@ def html_uret(cfg, onbellek):
         "d": gunler,
         "ad": {k: onbellek["ad"].get(k, k) for k in kodlar},
         "tip": {k: onbellek.get("tip", {}).get(k, "YAT") for k in kodlar},
-        "grup": GRUP_AD,
+        # Fon bazlı raporlar TUM tipini hiç üretmez (bkz. toplam_satirlari);
+        # GRUP_AD'ın yalnızca burada fiilen kullanılan alt kümesini gömerek bu
+        # raporların çıktısı grup toplamı raporundan bağımsız, değişmez kalır.
+        "grup": {t: GRUP_AD[t] for t in ("YAT", "EMK")},
         "f": {k: [round(akis[t][k]) if k in akis.get(t, {})
                   else (None if k in bosluk_kodlari.get(t, ()) else 0)
                   for t in gunler] for k in kodlar},
@@ -529,13 +539,42 @@ def html_uret(cfg, onbellek):
 
 # --- grup bazlı toplam raporu -----------------------------------------------
 
+def _satir(anahtar, ad, tip, kodlar, akis, gunler, fonlar):
+    """(anahtar, ad, tip, kodlar) için tek bir toplam satırı üretir.
+
+    YAT, EMK ve birleşik (TUM) satırlar aynı mantığı paylaşır: gözlem aralığı
+    (ilk gözlemden SONRA, son gözleme KADAR) t'yi kapsayan her üye fonun
+    akis[t]'te değeri OLMALI; biri eksikse (o gün TEFAS gözlemi vermemiş)
+    toplam sessizce kısmi kalmasın, null olsun. Henüz piyasaya çıkmamış (t <=
+    ilk gözlem) ya da kapanmış (t > son gözlem) fon bu şarta girmez, toplamı
+    iptal etmez.
+    """
+    araliklar = {k: (min(fonlar[k]), max(fonlar[k])) for k in kodlar}
+    seri = {}
+    for t in gunler:
+        gunun = akis.get(t, {})
+        aktif = {k for k in kodlar if araliklar[k][0] < t <= araliklar[k][1]}
+        seri[t] = None if (not aktif or (aktif - set(gunun))) else sum(gunun[k] for k in aktif)
+    return {
+        "anahtar": anahtar,
+        "ad": ad,
+        "tip": tip,
+        "kodlar": kodlar,
+        "fon_sayisi": len(kodlar),
+        "seri": seri,
+    }
+
+
 def toplam_satirlari(cfg):
     """Kaynak raporların önbelleklerinden (grup, fon tipi) satırları üretir.
 
     Yeni veri çekilmez: her kaynak rapor kendi önbelleğini kendi koşusunda
     tazeler, bu rapor yalnızca onları toplar. Bir grubun bir günkü toplamı, o
     gruptaki fonlardan birinin akışı hesaplanamıyorsa (ardışık TEFAS gözlemi
-    yok) null bırakılır — kısmi toplam tam sonuç gibi gösterilmez.
+    yok) null bırakılır — kısmi toplam tam sonuç gibi gösterilmez. Kaynakta
+    hem YAT hem EMK varsa üçüncü bir birleşik (TUM) satır da üretilir; TUM
+    satırı YAT+EMK toplamı olarak değil, aynı null-propagasyon mantığıyla
+    doğrudan tüm fon kümesi üzerinden hesaplanır.
     """
     satirlar = []
     bosluk_gunler = set()       # (kod, tarih) — kaynaklar arası aynı fon-gün
@@ -560,34 +599,25 @@ def toplam_satirlari(cfg):
                     yakin_bosluk_gunler.update((k, t) for k in kodlar)
         bilinmeyen |= set(onbellek.get("turu_bilinmeyen", []))
         tipler = onbellek.get("tip", {})
+        tip_kodlari = {}
         for tip in alt["fon_tipleri"]:
             kodlar = {k for k, t in tipler.items() if t == tip}
             if not kodlar:
                 continue
-            araliklar = {k: (min(onbellek["fon"][k]), max(onbellek["fon"][k]))
-                         for k in kodlar}
-            seri = {}
-            for t in gunler:
-                gunun = akis.get(t, {})
-                # Gözlem aralığı (ilk gözlemden SONRA, son gözleme KADAR) t'yi
-                # kapsayan her üye fonun akis[t]'te değeri OLMALI; biri eksikse
-                # (o gün TEFAS gözlemi vermemiş) toplam sessizce kısmi kalmasın,
-                # null olsun. Henüz piyasaya çıkmamış (t <= ilk gözlem) ya da
-                # kapanmış (t > son gözlem) fon bu şarta girmez, toplamı iptal
-                # etmez.
-                aktif = {k for k in kodlar if araliklar[k][0] < t <= araliklar[k][1]}
-                if not aktif or (aktif - set(gunun)):
-                    seri[t] = None
-                else:
-                    seri[t] = sum(gunun[k] for k in aktif)
-            satirlar.append({
-                "anahtar": f"{kaynak['kod']}-{tip}",
-                "ad": f"{kaynak['grup']} — {GRUP_AD[tip]}",
-                "tip": tip,
-                "kodlar": kodlar,
-                "fon_sayisi": len(kodlar),
-                "seri": seri,
-            })
+            tip_kodlari[tip] = kodlar
+            satirlar.append(_satir(
+                f"{kaynak['kod']}-{tip}", f"{kaynak['grup']} — {GRUP_AD[tip]}",
+                tip, kodlar, akis, gunler, onbellek["fon"],
+            ))
+        # Birleşik (TUM) satır yalnızca kaynakta hem YAT hem EMK varsa üretilir;
+        # tek tip olsaydı YAT satırının birebir kopyası olurdu (gereksiz
+        # örtüşen satır).
+        if "YAT" in tip_kodlari and "EMK" in tip_kodlari:
+            tum_kodlar = tip_kodlari["YAT"] | tip_kodlari["EMK"]
+            satirlar.append(_satir(
+                f"{kaynak['kod']}-TUM", f"{kaynak['grup']} — {GRUP_AD['TUM']}",
+                "TUM", tum_kodlar, akis, gunler, onbellek["fon"],
+            ))
     return satirlar, len(bosluk_gunler), len(yakin_bosluk_gunler), sorted(bilinmeyen)
 
 
@@ -595,13 +625,17 @@ def ortak_fonlar(satirlar):
     """{satır: {diğer satır: ortak fon sayısı}} — satırlar tematik, ayrık değil.
 
     Altın fonlarının tamamı kıymetli maden satırında, altın/gümüş katılım
-    fonları hem kıymetli maden hem katılım satırında yer alır. Örtüşen satırlar
-    birlikte seçilirse toplamları anlamsızdır; sayfa bunu bu haritayla bilir.
+    fonları hem kıymetli maden hem katılım satırında yer alır. Birleşik (TUM)
+    satır da kendi YAT ve EMK satırlarını %100 kapsar — bu örtüşme de burada
+    ifşa edilmeli, bu yüzden tip eşitliği şartı kaldırıldı; yalnızca kod
+    kümesi kesişimine bakılıyor. Bir fonun TEFAS tipi (YAT/EMK) tektir, yani
+    YAT ve EMK kod uzayları zaten ayrıktır (ör. PAR-YAT ∩ PAR-EMK boştur) —
+    tip şartının kaldırılması bunlar arasında sahte kesişim doğurmaz.
     """
     ortak = {}
     for a in satirlar:
         for b in satirlar:
-            if a is b or a["tip"] != b["tip"]:
+            if a is b:
                 continue
             kesisim = a["kodlar"] & b["kodlar"]
             if kesisim:
@@ -632,6 +666,9 @@ def toplam_html_uret(cfg):
             eksik.append(s["anahtar"])
     sirali = sorted(satirlar,
                     key=lambda s: -sum(abs(s["seri"].get(t) or 0) for t in gunler))
+    # row_fund_count: satır başına fon sayılarının toplamı (birleşik TUM
+    # satırları kendi YAT+EMK üyelerini tekrar sayar, bu yüzden tekil_fon'dan
+    # büyüktür — alan adı ve anlamı aynı kalıyor, yalnızca değeri büyüdü).
     fon_sayisi = sum(s["fon_sayisi"] for s in satirlar)
     tekil_fon = len({k for s in satirlar for k in s["kodlar"]})
     ortak = ortak_fonlar(satirlar)
@@ -650,6 +687,9 @@ def toplam_html_uret(cfg):
                       "boş bırakıldı.</span>")
     if ortak_ciftler:
         ozet = ", ".join(f"{a}∩{b}: {n} fon" for a, b, n in ortak_ciftler[:6])
+        kalan_cift = len(ortak_ciftler) - 6
+        if kalan_cift > 0:
+            ozet += f" ve {kalan_cift} çift daha"
         eksik_not += ("<span class=\"missing-note\">Gruplar tematik, ayrık değil "
                       f"({ozet}). Örtüşen gruplar birlikte seçilirse dönem toplamı "
                       "gösterilmez — çift sayım olurdu.</span>")
