@@ -159,6 +159,11 @@ def _validate_fund_artifact(data: Mapping[str, Any]) -> None:
     missing = sorted(set(REQUIRED_FUND_REPORTS) - reports.keys())
     if missing:
         raise ReportContractError("zorunlu fon raporu eksik: " + ", ".join(missing))
+    # Fazla anahtar sessizce kabul edilirse şema kayması yakalanmaz; yeni bir
+    # rapor eklenirken hem üretici hem bu sözleşme bilinçli güncellenmeli.
+    extra = sorted(reports.keys() - set(REQUIRED_FUND_REPORTS))
+    if extra:
+        raise ReportContractError("beklenmeyen fon raporu: " + ", ".join(extra))
     for key in sorted(reports):
         _validate_flow_report(
             reports[key],

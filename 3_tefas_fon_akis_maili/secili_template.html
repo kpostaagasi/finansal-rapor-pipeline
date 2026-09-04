@@ -297,6 +297,9 @@ function haftaBasi(iso) {
 function seriKur() {
   const from = ilkIndis();
   const aktif = KODLAR.filter(k => secili.has(k));
+  // Tematik gruplar örtüşüyorsa satırlar arası toplam çift sayılır; periyot
+  // başına değil seçim başına bir kez hesaplanır (döngüde tekrar sorulmaz).
+  const ortusuyor = !!ortakCift(aktif);
   const out = [];
   let cur = null, curKey = null;
   for (let i = from; i < N; i++) {
@@ -318,7 +321,7 @@ function seriKur() {
         cur.fon[k] += v;
       }
     }
-    cur.top = cur.complete ? Object.values(cur.fon).reduce((a, v) => a + v, 0) : null;
+    cur.top = (cur.complete && !ortusuyor) ? Object.values(cur.fon).reduce((a, v) => a + v, 0) : null;
   }
   return out;
 }
@@ -596,7 +599,11 @@ function yenile() {
   hoverIdx = -1;
   hideTT();
   S = seriKur();
-  $('#chartTitle').textContent = `${PERIYOT_AD[agg]} net akış (seçili ${BIRIM_COGUL} toplamı)`;
+  // Örtüşen seçimde toplam artık null (bkz. seriKur) — başlık bunu söylesin,
+  // metin tek yerden üretilir ki karo/tooltip/tablo ile çelişmesin.
+  const cakisma = ortakCift(KODLAR.filter(k => secili.has(k)));
+  const baslikSonEk = cakisma ? ' — örtüşen seçim, toplam çizilmiyor' : ' toplamı';
+  $('#chartTitle').textContent = `${PERIYOT_AD[agg]} net akış (seçili ${BIRIM_COGUL}${baslikSonEk})`;
   $('#rankTitle').textContent = `${BIRIM_BASLIK} bazında dönem toplamı`;
   $('#thPeriod').textContent = agg === 'd' ? 'Tarih' : agg === 'w' ? 'Hafta' : 'Ay';
   $('#tblSum').textContent = `Veri tablosu — ${PERIYOT_AD[agg].toLowerCase()} (${S.length} satır)`;

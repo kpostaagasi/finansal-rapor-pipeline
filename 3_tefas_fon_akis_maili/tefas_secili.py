@@ -116,20 +116,26 @@ def kiymetli_maden_unvani(unvan):
     Şemsiye Fonu", gümüş fonlarını çoğunlukla "Fon Sepeti"/"Serbest" altında
     sınıflıyor. Bu yüzden kıymetli maden evreni tür VE unvan birleşimidir.
 
+    TEFAS unvanlarında `İ` bazen İngilizce kelimelerde de kullanılıyor (ör.
+    "PLATİNUM"). Bu yüzden unvan tek noktada `İ` → ASCII `I`'ya indirgenip
+    yalnız ASCII anahtarlarla karşılaştırılıyor; PLATİN/PLATIN gibi çift
+    dallara gerek kalmıyor (SILVER/PALLADIUM'un da Türkçe İ'li yazımı artık
+    yakalanıyor).
+
     Unvan tuzakları (TEFAS unvan listesinden doğrulandı):
       · ALTINCI/ONALTINCI/YİRMİALTINCI — sıra sayısı (altin_unvani eler)
       · GOLDEN GLOBAL — kurucu adı (altin_unvani eler)
       · GÜMÜŞSUYU — Yapı Kredi'nin semt adlı özel fonu, gümüş değil
       · "ÖZEL BANKACILIK VE PLATİNUM" — hizmet segmenti adı, platin değil
     """
-    u = unvan.upper()
+    u = unvan.upper().replace("İ", "I")
     if altin_unvani(u):
         return True
     temiz = u.replace("GÜMÜŞSUYU", " ")
     if any(s in temiz for s in ("GÜMÜŞ", "SILVER", "PALADYUM", "PALLADIUM",
-                                "KIYMETLİ MADEN", "KIYMETLI MADEN")):
+                                "KIYMETLI MADEN")):
         return True
-    return ("PLATİN" in u or "PLATIN" in u) and "BANKACILIK" not in u
+    return "PLATIN" in u and "BANKACILIK" not in u
 
 
 # Tür bazlı kapsamların isteğe bağlı unvan kuralı: tür eşleşmese de unvan
@@ -311,15 +317,21 @@ def veri_guncelle(cfg, tam=False):
 
     adlar, tipler = dict(onbellek.get("ad", {})), dict(onbellek.get("tip", {}))
 
-    def kaydet(yeni, bilinmeyen=()):
-        """Ara kayıt: uzun çekim yarıda kalırsa ilerleme kaybolmasın."""
+    def kaydet(yeni, bilinmeyen=None):
+        """Ara kayıt (bilinmeyen=None): uzun çekim yarıda kalırsa ilerleme
+        kaybolmasın, turu_bilinmeyen alanına dokunmaz. Son kayıt: bu koşunun
+        kümesini (boş bile olsa) koşulsuz yazar — yoksa önceki koşudan kalan
+        bayat liste önbellekte sürünür."""
         for kod, seri in yeni.items():
             g = onbellek["fon"].setdefault(kod, {})
             for tarih, (pay, fiyat) in seri.items():
                 g[tarih] = [pay, fiyat]
         onbellek["ad"], onbellek["tip"] = adlar, tipler
-        if bilinmeyen:
-            onbellek["turu_bilinmeyen"] = sorted(bilinmeyen)
+        if bilinmeyen is not None:
+            if bilinmeyen:
+                onbellek["turu_bilinmeyen"] = sorted(bilinmeyen)
+            else:
+                onbellek.pop("turu_bilinmeyen", None)
         onbellek["guncelleme"] = dt.datetime.now().isoformat(timespec="seconds")
         atomic_json_dump(cfg["cache"], onbellek)
 
@@ -394,6 +406,13 @@ def kapsam_durumu(cfg, onbellek):
     beklenen = set(istenen) if istenen else (mevcut | onceki_mevcut)
     bulunan = mevcut & beklenen
     hesaplanan = set(akis.get(son, {})) & beklenen
+    # Son tarihte ilk gözlemini veren (piyasaya yeni çıkan) fon akış boşluğu
+    # DEĞİLDİR: akis_serisi çıkış gününü kasıtlı atlar (bkz. akis_serisi).
+    # Bu fonları "hesaplanamayan" sayıp zinciri son tarihte durdurmak yerine
+    # ayrı bir 'launched' kümesiyle ifşa ediyoruz — sessizleştirme değil,
+    # sınıflandırma düzeltmesi.
+    launched = {k for k in bulunan if min(onbellek["fon"][k]) == son}
+    hesaplanan |= launched
     if beklenen:
         bosluklar = {
             t: {k: v for k, v in kodlar.items() if k in beklenen}
@@ -413,6 +432,7 @@ def kapsam_durumu(cfg, onbellek):
         "found_codes": sorted(bulunan),
         "missing": sorted(beklenen - mevcut),
         "uncomputed": sorted(bulunan - hesaplanan),
+        "launched": sorted(launched),
         "recent_gap_count": yakin_bosluk_n,
     }
 
@@ -467,6 +487,10 @@ def html_uret(cfg, onbellek):
         eksik_not += ("<span class=\"missing-note\">TEFAS fon türünü açıklamadığı için "
                       f"kapsam dışı kalan {len(bilinmeyen)} fon: "
                       + html_lib.escape(", ".join(bilinmeyen)) + "</span>")
+    if durum["launched"]:
+        eksik_not += ("<span class=\"missing-note\">Son veri tarihinde piyasaya yeni "
+                      f"çıkan {len(durum['launched'])} fon: "
+                      + html_lib.escape(", ".join(durum["launched"])) + "</span>")
     # null = "hesaplanamadı" (ardışık TEFAS gözlemi yok). Fonun piyasaya
     # çıkışından önceki / kapanışından sonraki günler ile çıkış gününün kendisi
     # boşluk değildir: akışa 0 katkı verir ve dönem toplamını iptal etmez.
@@ -489,6 +513,8 @@ def html_uret(cfg, onbellek):
         "missing": eksik,
         "uncomputed_count": len(durum["uncomputed"]),
         "uncomputed": durum["uncomputed"],
+        "launched_count": len(durum["launched"]),
+        "launched": durum["launched"],
         "gap_count": bosluk_n,
         "recent_gap_count": durum["recent_gap_count"],
         "gap_codes": sorted({k for x in durum["bosluklar"].values() for k in x}),
@@ -512,9 +538,9 @@ def toplam_satirlari(cfg):
     yok) null bırakılır — kısmi toplam tam sonuç gibi gösterilmez.
     """
     satirlar = []
-    bosluk_n = 0
-    yakin_bosluk_n = 0
-    bilinmeyen = set()
+    bosluk_gunler = set()       # (kod, tarih) — kaynaklar arası aynı fon-gün
+    yakin_bosluk_gunler = set() # birden çok kaynakta (altın⊂kıymetli maden vb.)
+    bilinmeyen = set()          # tekrar sayılmasın diye çift değil küme
     for kaynak in cfg["kapsam"]["kaynaklar"]:
         alt = rapor_yukle(kaynak["rapor"])
         if not os.path.exists(alt["cache"]):
@@ -525,24 +551,35 @@ def toplam_satirlari(cfg):
         with open(alt["cache"], encoding="utf-8") as f:
             onbellek = json.load(f)
         akis, gunler, _, bosluklar = akis_serisi(onbellek)
-        bosluk_n += sum(len(x) for x in bosluklar.values())
+        for t, kodlar in bosluklar.items():
+            bosluk_gunler.update((k, t) for k in kodlar)
         if gunler:
             kesim = (dt.date.fromisoformat(gunler[-1]) - dt.timedelta(days=89)).isoformat()
-            yakin_bosluk_n += sum(len(x) for t, x in bosluklar.items() if t >= kesim)
+            for t, kodlar in bosluklar.items():
+                if t >= kesim:
+                    yakin_bosluk_gunler.update((k, t) for k in kodlar)
         bilinmeyen |= set(onbellek.get("turu_bilinmeyen", []))
         tipler = onbellek.get("tip", {})
         for tip in alt["fon_tipleri"]:
             kodlar = {k for k, t in tipler.items() if t == tip}
             if not kodlar:
                 continue
+            araliklar = {k: (min(onbellek["fon"][k]), max(onbellek["fon"][k]))
+                         for k in kodlar}
             seri = {}
             for t in gunler:
                 gunun = akis.get(t, {})
-                if kodlar & set(bosluklar.get(t, {})):
-                    seri[t] = None          # gruptaki bir fon hesaplanamadı
-                    continue
-                hesaplanan = kodlar & set(gunun)
-                seri[t] = sum(gunun[k] for k in hesaplanan) if hesaplanan else None
+                # Gözlem aralığı (ilk gözlemden SONRA, son gözleme KADAR) t'yi
+                # kapsayan her üye fonun akis[t]'te değeri OLMALI; biri eksikse
+                # (o gün TEFAS gözlemi vermemiş) toplam sessizce kısmi kalmasın,
+                # null olsun. Henüz piyasaya çıkmamış (t <= ilk gözlem) ya da
+                # kapanmış (t > son gözlem) fon bu şarta girmez, toplamı iptal
+                # etmez.
+                aktif = {k for k in kodlar if araliklar[k][0] < t <= araliklar[k][1]}
+                if not aktif or (aktif - set(gunun)):
+                    seri[t] = None
+                else:
+                    seri[t] = sum(gunun[k] for k in aktif)
             satirlar.append({
                 "anahtar": f"{kaynak['kod']}-{tip}",
                 "ad": f"{kaynak['grup']} — {GRUP_AD[tip]}",
@@ -551,7 +588,7 @@ def toplam_satirlari(cfg):
                 "fon_sayisi": len(kodlar),
                 "seri": seri,
             })
-    return satirlar, bosluk_n, yakin_bosluk_n, sorted(bilinmeyen)
+    return satirlar, len(bosluk_gunler), len(yakin_bosluk_gunler), sorted(bilinmeyen)
 
 
 def ortak_fonlar(satirlar):
@@ -581,7 +618,18 @@ def toplam_html_uret(cfg):
         raise RuntimeError("raporlanabilir TEFAS tarihi yok")
     son = gunler[-1]
     bulunan = [s for s in satirlar if s["seri"].get(son) is not None]
-    eksik = [s["anahtar"] for s in satirlar if s["seri"].get(son) is None]
+    # "missing": kaynağın önbelleğinde son tarih hiç yok (kaynak bayat/geride
+    # kaldı). "uncomputed": son tarih var ama o günün grup toplamı boşluk
+    # yüzünden null. build_site aynı grubu iki kez göstermesin diye ayrık
+    # tutuluyor; birleşimleri eski `eksik` bildirimiyle aynı kalıyor.
+    missing, uncomputed, eksik = [], [], []
+    for s in satirlar:
+        if son not in s["seri"]:
+            missing.append(s["anahtar"])
+            eksik.append(s["anahtar"])
+        elif s["seri"][son] is None:
+            uncomputed.append(s["anahtar"])
+            eksik.append(s["anahtar"])
     sirali = sorted(satirlar,
                     key=lambda s: -sum(abs(s["seri"].get(t) or 0) for t in gunler))
     fon_sayisi = sum(s["fon_sayisi"] for s in satirlar)
@@ -624,9 +672,9 @@ def toplam_html_uret(cfg):
         "data_end_date": son,
         "expected_count": len(satirlar),
         "found_count": len(bulunan),
-        "missing": eksik,
-        "uncomputed_count": len(eksik),
-        "uncomputed": eksik,
+        "missing": missing,
+        "uncomputed_count": len(uncomputed),
+        "uncomputed": uncomputed,
         "gap_count": bosluk_n,
         "recent_gap_count": yakin_bosluk_n,
         "gap_codes": [],

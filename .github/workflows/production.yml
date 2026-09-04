@@ -80,6 +80,41 @@ jobs:
         with:
           name: yayin-dosyalari
           path: /tmp/yayin
+      - name: Eski yayın dosyalarını temizle
+        run: |
+          # FAIL-CLOSED: kaynak artifact indirme hatası, boş çalışma vb.
+          # yüzünden eksikse temizliğe hiç girme — aksi halde hedef depodaki
+          # her şeyi silme riskimiz olur.
+          for beklenen in /tmp/yayin/site/index.html /tmp/yayin/site/report_status.json; do
+            if [ ! -s "$beklenen" ]; then
+              echo "HATA: $beklenen yok veya boş, temizlik iptal edildi." >&2
+              exit 1
+            fi
+          done
+          # Bugün yayınlanacak kümenin dosya adları: site/ içindekiler + kök
+          # dizine ayrıca kopyalanan 3 artifact json'ı.
+          beklenenler=$(mktemp)
+          {
+            find /tmp/yayin/site -maxdepth 1 \( -name '*.html' -o -name '*.json' \) -exec basename {} \;
+            echo fund_flows.json
+            echo commodities_treasury.json
+            echo manifest.json
+          } | sort -u > "$beklenenler"
+          # Hedef depo kökünde (yalnızca üst düzey; .git ve alt klasörlere
+          # dokunulmaz), yayınlanan türden (html/json) ama artık yayınlanan
+          # kümede olmayan dosyaları sil (ör. ad kayması sonrası ortada kalan
+          # eski tefas_altin_akis.html). git rm + açık liste karşılaştırması
+          # rsync --delete yerine tercih edildi: filtre kurallarıyla uğraşmadan
+          # "sadece kök + sadece html/json" sınırını doğrudan garanti eder,
+          # .nojekyll/README/LICENSE gibi depo dosyaları hiç aday olmaz.
+          find . -maxdepth 1 -type f \( -name '*.html' -o -name '*.json' \) | while read -r dosya; do
+            ad=$(basename "$dosya")
+            if ! grep -qxF "$ad" "$beklenenler"; then
+              echo "Siliniyor (artık yayınlanmıyor): $ad"
+              git rm -q -f -- "$ad" 2>/dev/null || rm -f -- "$dosya"
+            fi
+          done
+          rm -f "$beklenenler"
       - name: Dosyaları kopyala + commit + push
         run: |
           cp -a /tmp/yayin/site/. ./
@@ -90,6 +125,9 @@ jobs:
           git config user.email "pipeline@users.noreply.github.com"
           git add -A
           if git diff --cached --quiet; then
+            # Pratikte hemen hiç tetiklenmez: her rapor generated_at/last_successful_run
+            # damgasını taze basar, bu yüzden içerik her koşuda en az bir bayt değişir.
+            # Yine de savunma amaçlı (ör. tüm üreticiler aynı gün ikinci kez no-op çalışırsa) duruyor.
             echo "Değişiklik yok."
           else
             git commit -m "Raporlar güncellendi ($(date +'%d.%m.%Y %H:%M'))"

@@ -19,7 +19,7 @@ Kullanım:
   python3 secili_mail.py --example  # SADECE gönderene [ÖRNEK] maili at
   python3 secili_mail.py --no-push  # yerelde üret; yükleme/mail yok
 """
-import os, sys, json, ssl, base64, smtplib, subprocess, shutil, tempfile, datetime as dt
+import os, sys, re, json, ssl, base64, smtplib, subprocess, shutil, tempfile, datetime as dt
 from email.message import EmailMessage
 from email.utils import formataddr, formatdate
 
@@ -203,9 +203,36 @@ def fmt_tl(v):
     return f"{isaret}{a:,.0f} TL".replace(",", ".")
 
 
+REPORT_META_RE = re.compile(r"const\s+REPORT_META\s*=\s*(\{.*?\})\s*;", re.DOTALL)
+
+
+def _html_report_meta(html_yolu):
+    """HTML'e gömülü REPORT_META JSON'unu okur (build_site.py ile aynı desen)."""
+    with open(html_yolu, encoding="utf-8") as f:
+        kaynak = f.read()
+    eslesme = REPORT_META_RE.search(kaynak)
+    if not eslesme:
+        raise ValueError("REPORT_META bulunamadı")
+    return json.loads(eslesme.group(1))
+
+
+def _grup_ozeti(rapor):
+    """Türetilmiş grup raporunun (kapsam.tip == 'toplam') kendi önbelleği yok;
+    özet yerine üretilmiş HTML'deki REPORT_META'dan okunur."""
+    meta = _html_report_meta(rapor["html"])
+    bulunan, beklenen = meta.get("found_count"), meta.get("expected_count")
+    etiket = meta.get("count_label", "öğe")
+    son = str(meta.get("data_end_date", ""))[:10]
+    g, a, y = son.split("-")[2], son.split("-")[1], son.split("-")[0]
+    return (f"{bulunan}/{beklenen} {etiket} · {g}.{a}.{y} · "
+            "gruplar arası toplam gösterilmez (tematik, örtüşüyor)")
+
+
 def rapor_ozeti(rapor):
     """'64 fon · son işlem günü 31.07.2026: +1,2 mlr TL net giriş' satırı."""
     try:
+        if rapor["kapsam"]["tip"] == "toplam":
+            return _grup_ozeti(rapor)
         import tefas_secili as ts
         with open(rapor["cache"], encoding="utf-8") as f:
             ob = json.load(f)

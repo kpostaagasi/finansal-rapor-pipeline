@@ -1,8 +1,9 @@
 # Otomatik Rapor ve Mail Otomasyonları
 
-Yahoo Finance, ABD Hazinesi ve TEFAS verisinden dört finansal rapor üreten
-otomasyonların kaynak kodu. Mail ve yayın birbirinden bağımsız güvenlik kapılarıyla
-kapalı tutulabilir.
+Yahoo Finance, ABD Hazinesi ve TEFAS verisinden toplam 10 rapor sayfası üreten
+otomasyonların kaynak kodu (yayın adları `build_site.py`'deki `REPORTS`
+tablosunda tanımlı, tek kaynak). Mail ve yayın birbirinden bağımsız güvenlik
+kapılarıyla kapalı tutulabilir.
 
 Proje Python 3.14 venv'iyle doğrulanmıştır. Kurulum:
 
@@ -169,11 +170,16 @@ evreninin nasıl belirlendiğini söyler:
   Eski grup bazlı raporla ortak 395 günde **%0,000 sapmayla** aynı sonucu
   veriyor; iki üreticinin evreni testle eşitleniyor.
 - `raporlar/secili.json` + `fonlar.json` — elle seçilmiş fon listesi.
-- Fon grubu raporları (`tur`): **kıymetli maden 67+25**, para piyasası 85+13,
-  borçlanma araçları 86+45, katılım 112+85, hisse senedi 198+42 fon
-  (YAT+EMK, 04.09.2026). Türler `kapsam.turler` içinde fon tipine göre ayrı
-  listelenir; TEFAS'ın tür adı değişirse kapsam sessizce boşalmaz, rapor
-  metadata'sındaki `expected_count` düşer ve dashboard `Eksik veri` gösterir.
+- Fon grubu raporları (`tur`): **kıymetli maden 67+25=92**, para piyasası
+  81+13=94, borçlanma araçları 85+45=130, katılım 109+85=194, hisse senedi
+  192+42=234 fon (YAT+EMK, raporlanan/`expected_count`, 04.09.2026
+  `report_status.json`). TEFAS'ın tür listesinde bundan yaklaşık 15 fon daha
+  kayıtlı ama henüz günlük fiyat/`tedPaySayisi` vermiyor (piyasaya henüz
+  çıkmamış ya da işlem görmüyor); `topla()` bu alanlardan biri `None` gelince
+  fonu atlar (`tefas_secili.py`), bu yüzden raporlanan sayı tür listesinden
+  düşük çıkar. Türler `kapsam.turler` içinde fon tipine göre ayrı listelenir;
+  TEFAS'ın tür adı değişirse kapsam sessizce boşalmaz, rapor metadata'sındaki
+  `expected_count` düşer ve dashboard `Eksik veri` gösterir.
 - **Kıymetli maden evreni şemsiye türüyle tanımlanamaz** (`unvan_kurali:
   kiymetli_maden`). TEFAS altın katılım fonlarını "Katılım Şemsiye Fonu",
   gümüş fonlarını çoğunlukla "Fon Sepeti"/"Serbest" altında sınıflıyor: yalnız
@@ -200,11 +206,13 @@ evreninin nasıl belirlendiğini söyler:
   taşınmalı — o zaman altın satırı olamaz (altın bir şemsiye türü değil).
 
 **Tür bilinmeyen fonlar:** fon türü yalnızca TEFAS yönetim bilgisi ucundan
-geliyor ve o uç günlük veri veren her fonu kapsamıyor (04.09.2026'da 2.041
-fonun 13'ü yok — çoğu Albaraka katılım serbest fonu, toplam 101 mlr TL, evrenin
-%1'i). Bu fonlar tür bazlı kapsamda sessizce elenmez: önbellekte
-`turu_bilinmeyen` alanına, rapor metadata'sında `untyped`/`untyped_count`
-alanlarına ve sayfanın altbaşlığına yazılır.
+  geliyor ve o uç günlük veri veren her fonu kapsamıyor (04.09.2026'da 2.041
+  fonun 13'ü yok — çoğu Albaraka katılım serbest fonu). Bu 13 fonun büyüklüğü
+  04.09.2026'da tek seferlik elle ölçülmüş: toplam ~101 mlr TL, evrenin ~%1'i —
+  bu iki rakam kodda hesaplanmıyor, yalnızca o günkü manuel örneklemeye ait ve
+  güncellenmez. Bu fonlar tür bazlı kapsamda sessizce elenmez: önbellekte
+  `turu_bilinmeyen` alanına, rapor metadata'sında `untyped`/`untyped_count`
+  alanlarına ve sayfanın altbaşlığına yazılır.
 
 Yeni bir grup raporunu ilk kez kurmak (~13 dk; TEFAS pencere sınırı ve rate
 limiti yüzünden):
@@ -216,9 +224,15 @@ env -u PYTHONPATH .venv/bin/python 3_tefas_fon_akis_maili/tefas_secili.py \
 
 ## Zamanlama
 
-Bu proje için şu anda cron, LaunchAgent veya GitHub Actions zamanlayıcısı kurulu
-değildir. Kesin iş günleri/saatleri, eski otomasyonların kapalı olduğu ve test maili
-onaylandıktan sonra ayrıca belirlenmelidir. O zamana kadar komutlar manuel çalışır.
+`.github/workflows/production.yml` hafta içi (Pzt–Cuma) `cron: "7 8 * * 1-5"`
+ile 08:07 UTC'de (11:07 TRT) otomatik tetiklenir: tüm üreticileri `--dry-run`
+ile çalıştırır (yerel HTML üretir, mail **gönderilmez**), sırayla `build_site.py`
+ile site'ı ve `scripts/build_research_artifacts.py` ile dashboard artifact'lerini
+üretir, sonra `kpostaagasi/finansal-raporlar` reposuna push ederek GitHub
+Pages'e yayınlar. Gerçek mail gönderimi bu workflow'da yoktur — yalnızca
+mail script'lerinin kendi `allow_send` ayarı elle açıldığında, ayrı bir
+çalıştırmayla olur. `smoke.yml` zamanlanmamıştır; yalnızca elle
+(`workflow_dispatch`) tetiklenip kaynak erişimini test eder.
 
 ---
 
