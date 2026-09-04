@@ -37,18 +37,20 @@ jobs:
       - name: Dashboard artifact build (JSON'lar)
         run: |
           python scripts/build_research_artifacts.py --source-root . --output-dir artifacts
+      # Yayın adlarının tek kaynağı build_site.py'deki REPORTS tablosu:
+      # site/ klasörü zaten doğru dosya adlarıyla üretilmiş rapor kopyalarını,
+      # index.html'i, report_status.json'ı ve .nojekyll'i içeriyor. Raporları
+      # tek tek kopyalamak ad kaymasına yol açıyordu (fon bazlı altın raporu
+      # tefas_altin_akis.html olarak yayınlanıp dashboard'un linklediği
+      # tefas_altin_fon_bazinda.html güncellenmiyordu).
       - name: Yayın dosyalarını yükle
         uses: actions/upload-artifact@v4
         with:
           name: yayin-dosyalari
           if-no-files-found: error
+          include-hidden-files: true
           path: |
-            1_emtia_tahvil_maili/emtia_futures.html
-            2_tefas_altin_akis/tefas_net_akis.html
-            3_tefas_fon_akis_maili/tefas_altin_akis.html
-            3_tefas_fon_akis_maili/tefas_secili_akis.html
-            site/index.html
-            site/report_status.json
+            site/
             artifacts/fund_flows.json
             artifacts/commodities_treasury.json
             artifacts/manifest.json
@@ -69,12 +71,7 @@ jobs:
           path: /tmp/yayin
       - name: Dosyaları kopyala + commit + push
         run: |
-          cp /tmp/yayin/1_emtia_tahvil_maili/emtia_futures.html ./
-          cp /tmp/yayin/2_tefas_altin_akis/tefas_net_akis.html ./
-          cp /tmp/yayin/3_tefas_fon_akis_maili/tefas_altin_akis.html ./
-          cp /tmp/yayin/3_tefas_fon_akis_maili/tefas_secili_akis.html ./
-          cp /tmp/yayin/site/index.html ./
-          cp /tmp/yayin/site/report_status.json ./
+          cp -a /tmp/yayin/site/. ./
           cp /tmp/yayin/artifacts/fund_flows.json ./
           cp /tmp/yayin/artifacts/commodities_treasury.json ./
           cp /tmp/yayin/artifacts/manifest.json ./
