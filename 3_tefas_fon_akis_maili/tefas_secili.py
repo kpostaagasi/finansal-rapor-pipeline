@@ -146,21 +146,32 @@ UNVAN_KURALLARI = {
 }
 
 
-def tur_haritasi(fon_tipi):
+def tur_haritasi(fon_tipi, deneme=3):
     """{fon kodu: fonTurAciklama} — TEFAS yönetim bilgisi ucundan.
 
     Günlük veri ucu fon türünü döndürmüyor; tür yalnızca bu uçtan gelir. Uç
     günlük veri veren her fonu kapsamıyor (bugün 2041 fonun 13'ü burada yok),
     bu yüzden türü bilinmeyen fonlar sessizce elenmez: `TurKapsami` onları
     toplayıp metadata'da ifşa eder.
+
+    `fetch` gibi yeniden dener: sekiz rapor × iki fon tipi bu ucu 16 kez
+    çağırıyor ve TEFAS yoğunlukta bağlantıyı yanıt vermeden kapatabiliyor
+    (RemoteDisconnected). Tek kopma tüm koşuyu düşürmemeli.
     """
     body = {"fonTipi": fon_tipi, "fonKodu": None, "aramaMetni": None, "fonTurKod": None,
             "fonGrubu": None, "sfonTurKod": None, "basSira": 1, "bitSira": 100000,
             "fonTurAciklama": None, "dil": "TR", "kurucuKod": None, "islem": None}
-    r = requests.post(API_LISTE, headers=HEADERS, json=body, timeout=120)
-    r.raise_for_status()
-    return {x["fonKodu"]: x.get("fonTurAciklama")
-            for x in (r.json().get("resultList") or [])}
+    for i in range(1, deneme + 1):
+        try:
+            r = requests.post(API_LISTE, headers=HEADERS, json=body, timeout=120)
+            r.raise_for_status()
+            return {x["fonKodu"]: x.get("fonTurAciklama")
+                    for x in (r.json().get("resultList") or [])}
+        except Exception as e:
+            log(f"  {fon_tipi} tür listesi deneme {i}/{deneme} hata: {str(e)[:120]}")
+            if i == deneme:
+                raise
+            time.sleep(20)
 
 
 class TurKapsami:

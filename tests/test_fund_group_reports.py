@@ -530,6 +530,65 @@ class TuruBilinmeyenPersistenceTests(unittest.TestCase):
             self.assertIn("2026-09-02", onbellek["fon"]["AAA"])
 
 
+class TurHaritasiRetryTests(unittest.TestCase):
+    """tur_haritasi(): geçici bağlantı kopması tüm koşuyu düşürmemeli.
+
+    Canlı koşu 33923082952 tam bu uçta requests.exceptions.ConnectionError
+    ('Connection aborted', RemoteDisconnected) alıp tüm üretim zincirini
+    düşürmüştü; fetch gibi yeniden denemesi gerekiyor.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.module = load_module()
+
+    def test_type_map_retries_a_dropped_connection(self):
+        """İlk iki denemede RemoteDisconnected, üçüncüde başarı: sonuç kaybolmamalı."""
+        module = self.module
+
+        class SahteYanit:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"resultList": [{"fonKodu": "AAA", "fonTurAciklama": "Para Piyasası Şemsiye Fonu"}]}
+
+        cagrilar = []
+
+        def sahte_post(*args, **kwargs):
+            cagrilar.append((args, kwargs))
+            if len(cagrilar) < 3:
+                raise Exception("Connection aborted / RemoteDisconnected")
+            return SahteYanit()
+
+        with patch.object(module.requests, "post", side_effect=sahte_post) as post_mock, \
+                patch.object(module.time, "sleep") as sleep_mock:
+            sonuc = module.tur_haritasi("YAT")
+
+        self.assertEqual(sonuc, {"AAA": "Para Piyasası Şemsiye Fonu"})
+        self.assertEqual(post_mock.call_count, 3)
+        self.assertEqual(sleep_mock.call_count, 2)
+
+    def test_type_map_fails_closed_after_exhausting_retries(self):
+        """3 deneme de başarısızsa sessizce boş harita dönmemeli, hata fırlatmalı.
+
+        Boş harita dönseydi tüm fonlar "türü bilinmeyen" sayılıp rapor
+        sessizce boşalacaktı.
+        """
+        module = self.module
+
+        def sahte_post(*args, **kwargs):
+            raise Exception("Connection aborted / RemoteDisconnected")
+
+        with patch.object(module.requests, "post", side_effect=sahte_post) as post_mock, \
+                patch.object(module.time, "sleep") as sleep_mock:
+            with self.assertRaises(Exception):
+                module.tur_haritasi("YAT")
+
+        self.assertEqual(post_mock.call_count, 3)
+        self.assertEqual(sleep_mock.call_count, 2)
+
+
 class ReportConfigTests(unittest.TestCase):
     """Rapor tanımları ile yayın/dashboard tablosu birbirinden kaymamalı."""
 
