@@ -56,6 +56,73 @@ class TypeScopeTests(unittest.TestCase):
         self.assertTrue(kapsam("AH1", "... PARA PİYASASI EMEKLİLİK YATIRIM FONU", "EMK"))
         self.assertFalse(kapsam("BGL", "... ALTIN EMEKLİLİK YATIRIM FONU", "EMK"))
 
+    def test_precious_metals_scope_is_a_superset_of_the_gold_universe(self):
+        """Kıymetli maden evreni altını kapsamalı.
+
+        TEFAS altın katılım fonlarını "Katılım Şemsiye Fonu", gümüş fonlarını
+        "Fon Sepeti"/"Serbest" altında sınıflıyor. Şemsiye türü tek başına
+        kullanıldığında rapor 49 altın fonunun 23'ünü kaçırıyordu.
+        """
+        haritalar = {
+            "YAT": {
+                "AFO": "Kıymetli Madenler Şemsiye Fonu",
+                "KZL": "Katılım Şemsiye Fonu",       # Kuveyt Türk altın katılım
+                "ZCE": "Serbest Şemsiye Fonu",        # Ziraat türk altın serbest
+                "GUM": "Fon Sepeti Şemsiye Fonu",     # Ak gümüş fon sepeti
+                "TLY": "Serbest Şemsiye Fonu",        # ilgisiz
+            },
+            "EMK": {"BGL": "Altın Fonu", "KML": "Kıymetli Madenler"},
+        }
+        kapsam = self.module.TurKapsami(
+            haritalar,
+            {"YAT": ("Kıymetli Madenler Şemsiye Fonu",),
+             "EMK": ("Kıymetli Madenler", "Altın Fonu", "Altın Katılım Fonu")},
+            self.module.kiymetli_maden_unvani,
+        )
+        self.assertTrue(kapsam("AFO", "AK PORTFÖY ALTIN FONU", "YAT"))
+        self.assertTrue(kapsam("KZL", "KUVEYT TÜRK PORTFÖY ALTIN KATILIM FONU", "YAT"))
+        self.assertTrue(kapsam("ZCE", "ZİRAAT PORTFÖY TÜRK ALTIN SERBEST (TL) ÖZEL FON", "YAT"))
+        self.assertTrue(kapsam("GUM", "AK PORTFÖY GÜMÜŞ FON SEPETI FONU", "YAT"))
+        self.assertFalse(kapsam("TLY", "TERA PORTFÖY BİRİNCİ SERBEST FON", "YAT"))
+        self.assertTrue(kapsam("BGL", "... ALTIN EMEKLİLİK YATIRIM FONU", "EMK"))
+        self.assertTrue(kapsam("KML", "... KIYMETLİ MADENLER EMEKLİLİK YATIRIM FONU", "EMK"))
+
+    def test_precious_metals_title_rule_rejects_lookalike_names(self):
+        """Unvan tuzakları: TEFAS unvan listesinden doğrulanmış gerçek örnekler."""
+        kural = self.module.kiymetli_maden_unvani
+        for unvan in (
+            "AK PORTFÖY GÜMÜŞ FON SEPETI FONU",
+            "İŞ PORTFÖY GÜMÜŞ SERBEST FON",
+            "YAPI KREDİ PORTFÖY KIYMETLİ MADENLER KATILIM FONU",
+            "GOLDEN GLOBAL PORTFÖY ALTIN KATILIM FONU",
+        ):
+            with self.subTest(unvan=unvan):
+                self.assertTrue(kural(unvan))
+        for unvan in (
+            # "Gümüşsuyu" semt adı — Yapı Kredi'nin semt adlı özel fonları
+            "YAPI KREDİ PORTFÖY PY GÜMÜŞSUYU SERBEST (DÖVIZ) ÖZEL FON",
+            # "Platinum" burada hizmet segmenti adı, kıymetli maden değil
+            "TEB PORTFÖY ING BANK ÖZEL BANKACILIK VE PLATİNUM DEĞİŞKEN ÖZEL FON",
+            "AK PORTFÖY ING ÖZEL BANKACILIK VE PLATINUM MUTLAK GETİRİ HEDEFLİ DEĞİŞKEN FON",
+            # sıra sayısı ve kurucu adı tuzakları
+            "AK PORTFÖY ALTINCI SERBEST(DÖVİZ) FON",
+            "GOLDEN GLOBAL PORTFÖY PARA PİYASASI KATILIM FONU",
+            "DENİZ PORTFÖY ENERJİ VE MADENCİLİK SEKTÖRÜ DEĞİŞKEN FON",
+        ):
+            with self.subTest(unvan=unvan):
+                self.assertFalse(kural(unvan))
+
+    def test_unknown_title_rule_fails_loudly(self):
+        cfg = {
+            "ad": "test",
+            "kapsam": {"tip": "tur", "turler": {"YAT": ["X"]},
+                       "unvan_kurali": "yok_boyle_bir_kural"},
+            "fon_tipleri": ["YAT"],
+        }
+        with self.assertRaises(ValueError) as ctx:
+            self.module.kapsam_kurallari(cfg)
+        self.assertIn("bilinmeyen unvan kuralı", str(ctx.exception))
+
     def test_fund_types_are_not_mixed_across_fund_type_sides(self):
         """EMK türü YAT tarafında, YAT türü EMK tarafında kapsam açmamalı."""
         kapsam = self.kapsam(yat_turleri=("Para Piyasası Fonu",),

@@ -92,8 +92,11 @@ yayın/mail zinciri durur.
 **Fon evreni kuralı (kritik):** Yatırım fonu tarafı "adında ALTIN geçenler" —
 ancak **"ALTINCI"/"ON ALTINCI"** (sıra sayısı) elenir, **"GOLD"** geçenler eklenir
 ama **"GOLDEN ..."** elenir. Bu kural 04.09.2026 itibarıyla **49 fon** veriyor ve
-geçmiş seriyi %0,005 sapmayla yeniden üretiyor. Emeklilik tarafı
-`eyf_fonlar.json`'daki 16 fon.
+geçmiş seriyi %0,005 sapmayla yeniden üretiyor. Emeklilik tarafı **17 fon**:
+`fonTurAciklama ∈ {Altın Fonu, Altın Katılım Fonu}` **birleşim** unvan kuralı.
+Birleşim gerekli çünkü TEFAS, Garanti Emeklilik'in ALTIN EMEKLİLİK YATIRIM
+FONU'nu (`EMY`) "Kıymetli Madenler" olarak sınıflıyor: tür filtresi tek başına
+bu fonu kaçırıyordu (04.09.2026'da eklendi).
 
 Evren kod listesiyle değil kuralla belirlendiği için TEFAS'a çıkan yeni bir fon
 rapora kendiliğinden girer — GLL (GOLDEN GLOBAL PORTFÖY ALTIN KATILIM FONU)
@@ -158,21 +161,27 @@ evreninin nasıl belirlendiğini söyler:
 | `kapsam.tip` | Evren nereden gelir | Kullanan raporlar |
 |---|---|---|
 | `liste` | Elle seçilmiş kod listesi (`fonlar.json`) | `secili` (25 fon) |
-| `altin` | YAT tarafı unvan kuralı, EMK tarafı altın fon türleri | `altin` (49 + 16 fon) |
-| `tur` | TEFAS fon türü (`fonTurAciklama`) | `kiymetli_maden`, `para_piyasasi`, `borclanma`, `katilim`, `hisse` |
+| `altin` | Unvan kuralı ∪ altın emeklilik fon türleri | `altin` (49 + 17 fon) |
+| `tur` | TEFAS fon türü (`fonTurAciklama`), istenirse ∪ `unvan_kurali` | `kiymetli_maden`, `para_piyasasi`, `borclanma`, `katilim`, `hisse` |
 | `toplam` | Türetilmiş: kaynak raporların önbelleklerini toplar | `gruplar` |
 
-- `raporlar/altin.json` — TEFAS'ın iki altın filtresinin birebir karşılığı
-  (YAT tarafı unvan kuralı 49 fon, EMK tarafı `fonTurAciklama ∈ {Altın Fonu,
-  Altın Katılım Fonu}` 16 fon). Eski grup bazlı raporla ortak 395 günde
-  **%0,000 sapmayla** aynı sonucu veriyor; iki üreticinin evreni testle
-  eşitleniyor.
+- `raporlar/altin.json` — YAT tarafı unvan kuralı 49 fon, EMK tarafı 17 fon.
+  Eski grup bazlı raporla ortak 395 günde **%0,000 sapmayla** aynı sonucu
+  veriyor; iki üreticinin evreni testle eşitleniyor.
 - `raporlar/secili.json` + `fonlar.json` — elle seçilmiş fon listesi.
-- Fon grubu raporları (`tur`): kıymetli maden 27+20, para piyasası 85+13,
+- Fon grubu raporları (`tur`): **kıymetli maden 67+25**, para piyasası 85+13,
   borçlanma araçları 86+45, katılım 112+85, hisse senedi 198+42 fon
   (YAT+EMK, 04.09.2026). Türler `kapsam.turler` içinde fon tipine göre ayrı
   listelenir; TEFAS'ın tür adı değişirse kapsam sessizce boşalmaz, rapor
   metadata'sındaki `expected_count` düşer ve dashboard `Eksik veri` gösterir.
+- **Kıymetli maden evreni şemsiye türüyle tanımlanamaz** (`unvan_kurali:
+  kiymetli_maden`). TEFAS altın katılım fonlarını "Katılım Şemsiye Fonu",
+  gümüş fonlarını çoğunlukla "Fon Sepeti"/"Serbest" altında sınıflıyor: yalnız
+  şemsiye türüne bakan ilk sürüm 27 fon veriyor ve **altın raporunun 49 fonundan
+  23'ünü kaçırıyordu**. Kural artık tür ∪ unvan (ALTIN/GOLD, GÜMÜŞ/SILVER,
+  PLATİN, PALADYUM, KIYMETLİ MADEN) ve altın evrenini kapsadığı testle
+  kilitli. Unvan tuzakları: `GÜMÜŞSUYU` semt adıdır, `ÖZEL BANKACILIK VE
+  PLATİNUM` hizmet segmentidir, `MADENCİLİK` sektör fonudur — üçü de elenir.
 - `raporlar/gruplar.json` — grup bazında toplam akış. **Veri çekmez**, kaynak
   raporların önbelleklerini toplar; bu yüzden onlardan **sonra** çalışmalıdır
   (workflow'da sıra böyle). Gruptaki bir fonun akışı hesaplanamıyorsa o günün

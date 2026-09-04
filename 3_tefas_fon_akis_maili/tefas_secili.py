@@ -109,6 +109,37 @@ def altin_unvani(unvan):
     return "GOLD" in u and "GOLDEN" not in u
 
 
+def kiymetli_maden_unvani(unvan):
+    """Unvan kıymetli maden fonuna işaret ediyor mu?
+
+    Şemsiye türü tek başına yetmiyor: TEFAS altın katılım fonlarını "Katılım
+    Şemsiye Fonu", gümüş fonlarını çoğunlukla "Fon Sepeti"/"Serbest" altında
+    sınıflıyor. Bu yüzden kıymetli maden evreni tür VE unvan birleşimidir.
+
+    Unvan tuzakları (TEFAS unvan listesinden doğrulandı):
+      · ALTINCI/ONALTINCI/YİRMİALTINCI — sıra sayısı (altin_unvani eler)
+      · GOLDEN GLOBAL — kurucu adı (altin_unvani eler)
+      · GÜMÜŞSUYU — Yapı Kredi'nin semt adlı özel fonu, gümüş değil
+      · "ÖZEL BANKACILIK VE PLATİNUM" — hizmet segmenti adı, platin değil
+    """
+    u = unvan.upper()
+    if altin_unvani(u):
+        return True
+    temiz = u.replace("GÜMÜŞSUYU", " ")
+    if any(s in temiz for s in ("GÜMÜŞ", "SILVER", "PALADYUM", "PALLADIUM",
+                                "KIYMETLİ MADEN", "KIYMETLI MADEN")):
+        return True
+    return ("PLATİN" in u or "PLATIN" in u) and "BANKACILIK" not in u
+
+
+# Tür bazlı kapsamların isteğe bağlı unvan kuralı: tür eşleşmese de unvan
+# fonu evrene alabilir (raporlar/*.json içinde `kapsam.unvan_kurali`).
+UNVAN_KURALLARI = {
+    "altin": altin_unvani,
+    "kiymetli_maden": kiymetli_maden_unvani,
+}
+
+
 def tur_haritasi(fon_tipi):
     """{fon kodu: fonTurAciklama} — TEFAS yönetim bilgisi ucundan.
 
@@ -127,26 +158,28 @@ def tur_haritasi(fon_tipi):
 
 
 class TurKapsami:
-    """Fon türüne dayalı kapsam; türü bilinmeyen fonları kaydeder."""
+    """Fon türüne (istenirse tür VEYA unvan kuralına) dayalı kapsam.
 
-    def __init__(self, haritalar, istenen):
+    Türü TEFAS yönetim bilgisi ucunda görünmeyen ve unvan kuralına da uymayan
+    fonlar sessizce elenmez: `bilinmeyen` kümesinde toplanıp metadata'da ifşa
+    edilir.
+    """
+
+    def __init__(self, haritalar, istenen, unvan_kurali=None):
         self.haritalar = haritalar
         self.istenen = istenen
+        self.unvan_kurali = unvan_kurali
         self.bilinmeyen = set()
 
     def __call__(self, kod, unvan, tip):
         tur = self.haritalar.get(tip, {}).get(kod)
+        if tur is not None and tur in self.istenen.get(tip, ()):
+            return True
+        if self.unvan_kurali is not None and self.unvan_kurali(unvan):
+            return True
         if tur is None:
             self.bilinmeyen.add(kod)
-            return False
-        return tur in self.istenen.get(tip, ())
-
-    def gruplar(self):
-        """{fon kodu: grup adı} — grup bazlı raporun toplama anahtarı."""
-        return {kod: tur
-                for tip, harita in self.haritalar.items()
-                for kod, tur in harita.items()
-                if tur in self.istenen.get(tip, ())}
+        return False
 
 
 class ListeKapsami:
@@ -161,14 +194,22 @@ class ListeKapsami:
 
 
 class AltinKapsami:
-    """Unvanı altın fonuna işaret eden YAT + tür listesindeki EMK fonları."""
+    """Altın fonu evreni: unvan kuralı ∪ altın emeklilik fon türleri.
+
+    Yalnızca fon türüne bakmak yetmiyor: Garanti Emeklilik'in ALTIN EMEKLİLİK
+    YATIRIM FONU'nu (EMY) TEFAS "Kıymetli Madenler" olarak sınıflıyor, tür
+    filtresi bu fonu kaçırıyordu. Yalnızca unvana bakmak da yetmez; emeklilik
+    tarafında tür listesi kuralın kapsamını doğrulayan ikinci kaynaktır.
+    """
 
     def __init__(self, emk_kodlari):
         self.emk = emk_kodlari
         self.bilinmeyen = set()
 
     def __call__(self, kod, unvan, tip):
-        return altin_unvani(unvan) if tip == "YAT" else kod in self.emk
+        if altin_unvani(unvan):
+            return True
+        return tip == "EMK" and kod in self.emk
 
 
 def kapsam_kurallari(cfg):
@@ -182,14 +223,19 @@ def kapsam_kurallari(cfg):
                if tur in EMK_ALTIN_TURLERI}
         log(f"  altın emeklilik fonu: {len(emk)} kod")
         return AltinKapsami(emk)
-    if k["tip"] in ("tur", "tur_toplam"):
+    if k["tip"] == "tur":
+        kural_adi = k.get("unvan_kurali")
+        if kural_adi is not None and kural_adi not in UNVAN_KURALLARI:
+            raise ValueError(f"bilinmeyen unvan kuralı: {kural_adi}")
+        kural = UNVAN_KURALLARI.get(kural_adi)
         haritalar, istenen = {}, {}
         for tip in cfg["fon_tipleri"]:
             haritalar[tip] = tur_haritasi(tip)
             istenen[tip] = tuple(k["turler"].get(tip, ()))
             kapsamda = sum(1 for t in haritalar[tip].values() if t in istenen[tip])
-            log(f"  {tip}: {kapsamda} fon, {len(istenen[tip])} tür")
-        return TurKapsami(haritalar, istenen)
+            log(f"  {tip}: türle {kapsamda} fon, {len(istenen[tip])} tür"
+                + (f", ek olarak '{kural_adi}' unvan kuralı" if kural else ""))
+        return TurKapsami(haritalar, istenen, kural)
     raise ValueError(f"bilinmeyen kapsam tipi: {k['tip']}")
 
 

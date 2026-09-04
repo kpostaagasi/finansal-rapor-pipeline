@@ -24,6 +24,7 @@ GROUP_MODULE = ROOT / "2_tefas_altin_akis" / "tefas_akis.py"
 SELECTED_MODULE = ROOT / "3_tefas_fon_akis_maili" / "tefas_secili.py"
 GROUP_CACHE = ROOT / "2_tefas_altin_akis" / "fon_veri.json"
 SELECTED_CACHE = ROOT / "3_tefas_fon_akis_maili" / "altin_veri.json"
+PRECIOUS_CACHE = ROOT / "3_tefas_fon_akis_maili" / "kiymetli_veri.json"
 PENSION_LIST = ROOT / "2_tefas_altin_akis" / "eyf_fonlar.json"
 
 # 04.09.2026'da TEFAS unvan listesi üzerinden gözden geçirilmiş yatırım fonu
@@ -36,6 +37,15 @@ REVIEWED_INVESTMENT_FUNDS = {
     "KZL", "KZU", "LKF", "MKG", "NAK", "NAU", "NJF", "OGD", "OIL", "OJK",
     "PA2", "PAF", "PEA", "PIR", "PKF", "PTN", "RBA", "RJG", "RPG", "TAL",
     "TCA", "TRO", "TTA", "TUA", "UP1", "VFO", "VLT", "YKT", "ZCE",
+}
+
+# Emeklilik tarafı: TEFAS fon türü (Altın Fonu / Altın Katılım Fonu) tek
+# başına yetmiyor. EMY (GARANTİ EMEKLİLİK ALTIN EYF) "Kıymetli Madenler"
+# olarak sınıflandığı için tür filtresinden düşüyordu; unvan kuralı onu
+# 04.09.2026'da evrene geri getirdi.
+REVIEWED_PENSION_FUNDS = {
+    "AEA", "AGA", "AMZ", "BGL", "BNA", "CFA", "EAE", "EMY", "GEV", "GHA",
+    "GRA", "HEA", "KEF", "MEA", "NHA", "NZA", "VGA",
 }
 
 # TEFAS unvanlarından alınmış gerçek örnekler: (unvan, evrene girmeli mi?)
@@ -128,6 +138,37 @@ class GoldUniverseTests(unittest.TestCase):
             "TEFAS'ta fonTurAciklama'sı Altın (Katılım) Fonu olan emeklilik "
             "fonlarını yenileyip --bootstrap ile seriyi yeniden kur.",
         )
+
+    def test_pension_universe_matches_the_reviewed_fund_set(self):
+        for cache in (GROUP_CACHE, SELECTED_CACHE):
+            codes = cached_codes(cache)["EMK"]
+            with self.subTest(cache=cache.name):
+                self.assertEqual(
+                    (sorted(codes - REVIEWED_PENSION_FUNDS),
+                     sorted(REVIEWED_PENSION_FUNDS - codes)),
+                    ([], []),
+                    f"{cache.name}: altın emeklilik evreni değişti. Unvanı ve "
+                    "fon türünü TEFAS'ta doğrula, sonra REVIEWED_PENSION_FUNDS, "
+                    "eyf_fonlar.json ve README'yi güncelle.",
+                )
+
+    def test_gold_universe_is_contained_in_the_precious_metals_report(self):
+        """Altın fonları kıymetli maden raporunun alt kümesi olmalı.
+
+        TEFAS altın katılım fonlarını "Katılım Şemsiye Fonu", gümüş fonlarını
+        "Fon Sepeti"/"Serbest" altında sınıflıyor; kıymetli maden evreni bu
+        yüzden şemsiye türüne değil tür ∪ unvan kuralına dayanır. Aksi halde
+        "kıymetli maden" raporu kendi içindeki altın fonlarını kaçırıyordu.
+        """
+        altin = cached_codes(GROUP_CACHE)
+        kiymetli = cached_codes(PRECIOUS_CACHE)
+        for tip in ("YAT", "EMK"):
+            with self.subTest(tip=tip):
+                eksik = sorted(altin[tip] - kiymetli[tip])
+                self.assertEqual(
+                    eksik, [],
+                    f"kıymetli maden raporu şu altın fonlarını kaçırıyor: {eksik}",
+                )
 
 
 if __name__ == "__main__":
