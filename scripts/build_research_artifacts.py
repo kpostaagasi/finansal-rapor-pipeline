@@ -71,10 +71,12 @@ def build_fund_artifact(
     today: date | None = None,
 ) -> dict[str, Any]:
     """Üç TEFAS çıktısını tek, sürümlü ve fail-closed artifacte sarar."""
+    # Başlıklara fon sayısı yazılmaz: liste değiştiğinde artifact başlığı
+    # sessizce yanlışa döner. Gerçek sayı metadata.expected_count'ta.
     inputs = [
         ("gold_total", "Altın Fonları Toplam Net Akış", group_html),
         ("gold_by_fund", "Altın Fonları Fon Bazında Net Akış", gold_detail_html),
-        ("selected_funds", "Seçili 15 Fon Net Akış", selected_html),
+        ("selected_funds", "Seçili Fonlara Net Akış", selected_html),
     ]
     reports: dict[str, Any] = {}
     dates: list[str] = []
