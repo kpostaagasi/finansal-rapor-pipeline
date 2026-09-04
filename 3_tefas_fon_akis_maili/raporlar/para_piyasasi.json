@@ -1,0 +1,25 @@
+{
+  "ad": "para_piyasasi",
+  "baslik": "TEFAS Para Piyasası Fonlarına Net Akış",
+  "kapsam": {
+    "tip": "tur",
+    "turler": {
+      "YAT": [
+        "Para Piyasası Şemsiye Fonu"
+      ],
+      "EMK": [
+        "Para Piyasası Fonu"
+      ]
+    }
+  },
+  "fon_tipleri": [
+    "YAT",
+    "EMK"
+  ],
+  "cache": "para_veri.json",
+  "html": "tefas_para_akis.html",
+  "desktop": "~/Documents/TEFAS_ParaPiyasasi_Akis.html",
+  "github_path": "tefas_para_piyasasi.html",
+  "url": "https://kpostaagasi.github.io/finansal-raporlar/tefas_para_piyasasi.html",
+  "mail_ad": "TEFAS Para Piyasası Fonlarına Net Akış"
+}

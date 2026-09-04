@@ -45,7 +45,8 @@ class BuildSiteTests(unittest.TestCase):
             result = module.build_site(root=root, site_dir=site)
 
             self.assertEqual(result["ready"], 2)
-            self.assertEqual(result["missing"], 2)
+            # Rapor sayısı büyüdükçe kaymasın: hazır olmayan her kaynak eksik sayılır.
+            self.assertEqual(result["missing"], len(module.REPORTS) - 2)
             self.assertEqual((site / "emtia_futures.html").read_text(), "<html>emtia</html>")
             self.assertEqual((site / "tefas_net_akis.html").read_text(), "<html>altin</html>")
             index = (site / "index.html").read_text(encoding="utf-8")

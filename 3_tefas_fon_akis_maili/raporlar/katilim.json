@@ -1,0 +1,33 @@
+{
+  "ad": "katilim",
+  "baslik": "TEFAS Katılım Fonlarına Net Akış",
+  "kapsam": {
+    "tip": "tur",
+    "turler": {
+      "YAT": [
+        "Katılım Şemsiye Fonu"
+      ],
+      "EMK": [
+        "Katılım Fonu",
+        "Katılım Standart Fon",
+        "Katılım Değişken Fon",
+        "Katılım Hisse Senedi Fonu",
+        "Katılım Katkı Fonu",
+        "Başlangıç Katılım Fonu",
+        "OKS Katılım Standart Fon",
+        "Kira Sertifikasi Katılım Fonu",
+        "Altın Katılım Fonu"
+      ]
+    }
+  },
+  "fon_tipleri": [
+    "YAT",
+    "EMK"
+  ],
+  "cache": "katilim_veri.json",
+  "html": "tefas_katilim_akis.html",
+  "desktop": "~/Documents/TEFAS_Katilim_Akis.html",
+  "github_path": "tefas_katilim.html",
+  "url": "https://kpostaagasi.github.io/finansal-raporlar/tefas_katilim.html",
+  "mail_ad": "TEFAS Katılım Fonlarına Net Akış"
+}

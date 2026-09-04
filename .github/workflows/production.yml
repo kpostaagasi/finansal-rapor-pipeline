@@ -22,6 +22,9 @@ jobs:
         run: pip install -r requirements.txt
       # TEFAS tarihçesi repo'da seed'li (Mac'ten tek seferlik): bootstrap yok,
       # üreticiler seed'den başlayıp eksik günleri çeker (~1-2 dk).
+      # Ek rapor = ek istek maliyeti değil: TEFAS isteği fon tipine göre tüm
+      # evreni döndürür, kapsam filtresi istemci tarafındadır; her rapor kendi
+      # cache'ini artımlı tazeler.
       - name: Üreticiler (mail kapalı — dry-run)
         env:
           TZ: Europe/Istanbul
@@ -29,6 +32,14 @@ jobs:
           python 1_emtia_tahvil_maili/gunluk_mail.py --dry-run
           python 3_tefas_fon_akis_maili/tefas_secili.py --rapor altin
           python 3_tefas_fon_akis_maili/tefas_secili.py --rapor secili
+          python 3_tefas_fon_akis_maili/tefas_secili.py --rapor kiymetli_maden
+          python 3_tefas_fon_akis_maili/tefas_secili.py --rapor para_piyasasi
+          python 3_tefas_fon_akis_maili/tefas_secili.py --rapor katilim
+          python 3_tefas_fon_akis_maili/tefas_secili.py --rapor hisse
+          python 3_tefas_fon_akis_maili/tefas_secili.py --rapor borclanma
+          # gruplar türetilmiş rapor: kaynak raporların önbelleklerini toplar,
+          # bu yüzden EN SON çalışmalı.
+          python 3_tefas_fon_akis_maili/tefas_secili.py --rapor gruplar
       - name: Site build (index.html + report_status.json)
         run: python build_site.py
       # Builder + doğrulayıcı pipeline içinde (bv-fon-dashboard'dan senkron kopya;

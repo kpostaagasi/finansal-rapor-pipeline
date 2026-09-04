@@ -1,0 +1,40 @@
+{
+  "ad": "gruplar",
+  "baslik": "TEFAS Fon Gruplarına Net Akış (grup bazında)",
+  "kapsam": {
+    "tip": "toplam",
+    "kaynaklar": [
+      {
+        "kod": "KIY",
+        "grup": "Kıymetli maden fonları",
+        "rapor": "kiymetli_maden"
+      },
+      {
+        "kod": "PAR",
+        "grup": "Para piyasası fonları",
+        "rapor": "para_piyasasi"
+      },
+      {
+        "kod": "BOR",
+        "grup": "Borçlanma araçları fonları",
+        "rapor": "borclanma"
+      },
+      {
+        "kod": "KAT",
+        "grup": "Katılım fonları",
+        "rapor": "katilim"
+      },
+      {
+        "kod": "HIS",
+        "grup": "Hisse senedi fonları",
+        "rapor": "hisse"
+      }
+    ]
+  },
+  "fon_tipleri": [],
+  "html": "tefas_gruplar_akis.html",
+  "desktop": "~/Documents/TEFAS_Fon_Gruplari_Akis.html",
+  "github_path": "tefas_fon_gruplari.html",
+  "url": "https://kpostaagasi.github.io/finansal-raporlar/tefas_fon_gruplari.html",
+  "mail_ad": "TEFAS Fon Gruplarına Net Akış"
+}

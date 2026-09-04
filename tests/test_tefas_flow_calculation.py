@@ -80,6 +80,55 @@ class FundFlowCalculationTests(unittest.TestCase):
             issues["2026-06-05"], {"missing_current": [], "missing_previous": []}
         )
 
+    def test_report_cells_separate_launch_days_from_uncomputable_gaps(self):
+        """null yalnızca "hesaplanamadı" demek; piyasaya çıkış öncesi 0 katkıdır.
+
+        Aksi halde dönem içinde açılan tek bir fon (ör. 20.08.2026'da çıkan GLL)
+        raporun dönem toplamını tümüyle iptal ediyordu.
+        """
+        cache = {
+            "fon": {
+                "ESKI": {
+                    "2026-09-01": [100, 1.0],
+                    "2026-09-02": [110, 1.0],
+                    "2026-09-03": [120, 1.0],
+                },
+                "YENI": {"2026-09-02": [50, 1.0], "2026-09-03": [60, 1.0]},
+                "BOSLUKLU": {"2026-09-01": [10, 1.0], "2026-09-03": [30, 1.0]},
+            },
+            "ad": {"ESKI": "A", "YENI": "B", "BOSLUKLU": "C"},
+            "tip": {"ESKI": "YAT", "YENI": "YAT", "BOSLUKLU": "YAT"},
+        }
+        cfg = {
+            "ad": "test",
+            "baslik": "Test",
+            "kapsam": {"tip": "tur", "turler": {"YAT": ["X"]}},
+            "fon_tipleri": ["YAT"],
+        }
+        yakalanan = {}
+
+        def sahte_yaz(cfg_, raw, meta, ozet, eksik_not, gunler):
+            yakalanan.update(raw=raw, meta=meta)
+
+        original = self.selected.html_yaz
+        self.selected.html_yaz = sahte_yaz
+        try:
+            self.selected.html_uret(cfg, cache)
+        finally:
+            self.selected.html_yaz = original
+
+        raw = yakalanan["raw"]
+        gunler = raw["d"]
+        i2 = gunler.index("2026-09-02")
+        i3 = gunler.index("2026-09-03")
+        # YENI 02.09'da piyasaya çıktı: çıkış günü akışa 0 katkı verir, null değil.
+        self.assertEqual(raw["f"]["YENI"][i2], 0)
+        self.assertEqual(raw["f"]["YENI"][i3], 10)
+        # BOSLUKLU 02.09'da gözlem vermedi: 03.09 gerçek boşluk, null kalır.
+        self.assertIsNone(raw["f"]["BOSLUKLU"][i3])
+        self.assertEqual(yakalanan["meta"]["gap_codes"], ["BOSLUKLU"])
+        self.assertEqual(raw["f"]["ESKI"][i3], 10)
+
 
 if __name__ == "__main__":
     unittest.main()

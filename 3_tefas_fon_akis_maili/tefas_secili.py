@@ -85,10 +85,14 @@ def atomic_json_dump(path, value):
 
 
 def rapor_yukle(ad="secili"):
-    """raporlar/<ad>.json'u okur; yollar mutlak hale getirilir."""
+    """raporlar/<ad>.json'u okur; yollar mutlak hale getirilir.
+
+    Türetilmiş raporların (grup toplamı) kendi önbelleği yoktur.
+    """
     with open(os.path.join(RAPOR_DIZIN, f"{ad}.json"), encoding="utf-8") as f:
         cfg = json.load(f)
-    cfg["cache"] = os.path.join(HERE, cfg["cache"])
+    if cfg.get("cache"):
+        cfg["cache"] = os.path.join(HERE, cfg["cache"])
     cfg["html"] = os.path.join(HERE, cfg["html"])
     cfg["desktop"] = os.path.expanduser(cfg["desktop"])
     return cfg
@@ -105,28 +109,87 @@ def altin_unvani(unvan):
     return "GOLD" in u and "GOLDEN" not in u
 
 
-def emk_altin_kodlari():
-    """Emeklilik tarafında fonTurAciklama'sı Altın (Katılım) Fonu olan kodlar."""
-    body = {"fonTipi": "EMK", "fonKodu": None, "aramaMetni": None, "fonTurKod": None,
+def tur_haritasi(fon_tipi):
+    """{fon kodu: fonTurAciklama} — TEFAS yönetim bilgisi ucundan.
+
+    Günlük veri ucu fon türünü döndürmüyor; tür yalnızca bu uçtan gelir. Uç
+    günlük veri veren her fonu kapsamıyor (bugün 2041 fonun 13'ü burada yok),
+    bu yüzden türü bilinmeyen fonlar sessizce elenmez: `TurKapsami` onları
+    toplayıp metadata'da ifşa eder.
+    """
+    body = {"fonTipi": fon_tipi, "fonKodu": None, "aramaMetni": None, "fonTurKod": None,
             "fonGrubu": None, "sfonTurKod": None, "basSira": 1, "bitSira": 100000,
             "fonTurAciklama": None, "dil": "TR", "kurucuKod": None, "islem": None}
     r = requests.post(API_LISTE, headers=HEADERS, json=body, timeout=120)
     r.raise_for_status()
-    return {x["fonKodu"] for x in (r.json().get("resultList") or [])
-            if x.get("fonTurAciklama") in EMK_ALTIN_TURLERI}
+    return {x["fonKodu"]: x.get("fonTurAciklama")
+            for x in (r.json().get("resultList") or [])}
+
+
+class TurKapsami:
+    """Fon türüne dayalı kapsam; türü bilinmeyen fonları kaydeder."""
+
+    def __init__(self, haritalar, istenen):
+        self.haritalar = haritalar
+        self.istenen = istenen
+        self.bilinmeyen = set()
+
+    def __call__(self, kod, unvan, tip):
+        tur = self.haritalar.get(tip, {}).get(kod)
+        if tur is None:
+            self.bilinmeyen.add(kod)
+            return False
+        return tur in self.istenen.get(tip, ())
+
+    def gruplar(self):
+        """{fon kodu: grup adı} — grup bazlı raporun toplama anahtarı."""
+        return {kod: tur
+                for tip, harita in self.haritalar.items()
+                for kod, tur in harita.items()
+                if tur in self.istenen.get(tip, ())}
+
+
+class ListeKapsami:
+    """Elle seçilmiş kod listesi."""
+
+    def __init__(self, kodlar):
+        self.kodlar = kodlar
+        self.bilinmeyen = set()
+
+    def __call__(self, kod, unvan, tip):
+        return kod in self.kodlar
+
+
+class AltinKapsami:
+    """Unvanı altın fonuna işaret eden YAT + tür listesindeki EMK fonları."""
+
+    def __init__(self, emk_kodlari):
+        self.emk = emk_kodlari
+        self.bilinmeyen = set()
+
+    def __call__(self, kod, unvan, tip):
+        return altin_unvani(unvan) if tip == "YAT" else kod in self.emk
 
 
 def kapsam_kurallari(cfg):
-    """(kod, unvan, tip) -> rapora girsin mi? sorusunu yanıtlayan fonksiyon döndürür."""
+    """(kod, unvan, tip) -> rapora girsin mi? sorusunu yanıtlayan nesne döndürür."""
     k = cfg["kapsam"]
     if k["tip"] == "liste":
         with open(os.path.join(HERE, k["dosya"]), encoding="utf-8") as f:
-            kodlar = set(json.load(f)["fonlar"])
-        return lambda kod, unvan, tip: kod in kodlar
+            return ListeKapsami(set(json.load(f)["fonlar"]))
     if k["tip"] == "altin":
-        emk = emk_altin_kodlari()
+        emk = {kod for kod, tur in tur_haritasi("EMK").items()
+               if tur in EMK_ALTIN_TURLERI}
         log(f"  altın emeklilik fonu: {len(emk)} kod")
-        return lambda kod, unvan, tip: (altin_unvani(unvan) if tip == "YAT" else kod in emk)
+        return AltinKapsami(emk)
+    if k["tip"] in ("tur", "tur_toplam"):
+        haritalar, istenen = {}, {}
+        for tip in cfg["fon_tipleri"]:
+            haritalar[tip] = tur_haritasi(tip)
+            istenen[tip] = tuple(k["turler"].get(tip, ()))
+            kapsamda = sum(1 for t in haritalar[tip].values() if t in istenen[tip])
+            log(f"  {tip}: {kapsamda} fon, {len(istenen[tip])} tür")
+        return TurKapsami(haritalar, istenen)
     raise ValueError(f"bilinmeyen kapsam tipi: {k['tip']}")
 
 
@@ -160,7 +223,7 @@ def fetch(fon_tipi, bas, bit, deneme=3):
 
 
 def topla(cfg, bas, bit, adlar, tipler, pencere_bitti=None):
-    """[bas, bit] için {kod: {tarih: (pay, fiyat)}} döndürür.
+    """[bas, bit] için ({kod: {tarih: (pay, fiyat)}}, kapsam) döndürür.
 
     Her pencere sonunda `pencere_bitti(veri)` çağrılır (araya girip kaydetmek için)."""
     kapsamda = kapsam_kurallari(cfg)
@@ -182,7 +245,7 @@ def topla(cfg, bas, bit, adlar, tipler, pencere_bitti=None):
         if pencere_bitti:
             pencere_bitti(veri)
         pencere_bas = pencere_bit + dt.timedelta(days=1)
-    return veri
+    return veri, kapsamda
 
 
 def veri_guncelle(cfg, tam=False):
@@ -202,20 +265,27 @@ def veri_guncelle(cfg, tam=False):
 
     adlar, tipler = dict(onbellek.get("ad", {})), dict(onbellek.get("tip", {}))
 
-    def kaydet(yeni):
+    def kaydet(yeni, bilinmeyen=()):
         """Ara kayıt: uzun çekim yarıda kalırsa ilerleme kaybolmasın."""
         for kod, seri in yeni.items():
             g = onbellek["fon"].setdefault(kod, {})
             for tarih, (pay, fiyat) in seri.items():
                 g[tarih] = [pay, fiyat]
         onbellek["ad"], onbellek["tip"] = adlar, tipler
+        if bilinmeyen:
+            onbellek["turu_bilinmeyen"] = sorted(bilinmeyen)
         onbellek["guncelleme"] = dt.datetime.now().isoformat(timespec="seconds")
         atomic_json_dump(cfg["cache"], onbellek)
 
-    yeni = topla(cfg, bas, bugun, adlar, tipler, pencere_bitti=kaydet)
+    yeni, kapsamda = topla(cfg, bas, bugun, adlar, tipler, pencere_bitti=kaydet)
     if not yeni:
         raise RuntimeError("TEFAS'tan veri gelmedi")
-    kaydet(yeni)
+    # Türü TEFAS yönetim bilgisi ucunda görünmeyen fonlar kapsam dışı kaldı;
+    # sessizce düşmesinler diye önbelleğe yazılıp metadata'da raporlanır.
+    kaydet(yeni, kapsamda.bilinmeyen)
+    if kapsamda.bilinmeyen:
+        log(f"  türü bilinmeyen {len(kapsamda.bilinmeyen)} fon kapsam dışı: "
+            + ", ".join(sorted(kapsamda.bilinmeyen)))
     return onbellek
 
 
@@ -306,6 +376,28 @@ def kapsam_durumu(cfg, onbellek):
 GRUP_AD = {"YAT": "Yatırım fonları", "EMK": "Emeklilik fonları"}
 
 
+def html_yaz(cfg, raw, report_meta, fon_ozet, eksik_not, gunler):
+    """Şablonu doldurup rapor HTML'ini yerel çıktılara yazar."""
+    with open(TEMPLATE, encoding="utf-8") as f:
+        html = f.read()
+    tr = lambda iso: "{2}.{1}.{0}".format(*iso.split("-"))
+    html = (html.replace("__RAW__", script_json(raw))
+                .replace("__REPORT_META__", script_json(report_meta))
+                .replace("__BASLIK__", cfg["baslik"])
+                .replace("__FON_N__", str(report_meta["found_count"]))
+                .replace("__ISTENEN_N__", str(report_meta["expected_count"]))
+                .replace("__FON_OZET__", fon_ozet)
+                .replace("__EKSIK_NOT__", eksik_not)
+                .replace("__ILK_TARIH__", tr(gunler[0]))
+                .replace("__SON_TARIH__", tr(gunler[-1])))
+    for yol in (cfg["html"], cfg["desktop"]):
+        try:
+            with open(yol, "w", encoding="utf-8") as f:
+                f.write(html)
+        except OSError as e:
+            log(f"{yol} yazılamadı: {e}")
+
+
 def html_uret(cfg, onbellek):
     durum = kapsam_durumu(cfg, onbellek)
     akis, gunler = durum["akis"], durum["gunler"]
@@ -314,10 +406,10 @@ def html_uret(cfg, onbellek):
     istenen = set(istenen_kodlar(cfg))
     if istenen:
         kodlar = [k for k in kodlar if k in istenen]
-    istenen = istenen_kodlar(cfg)
     eksik = durum["missing"]
     istenen_n = len(durum["expected_codes"])
     bulunan_n = len(durum["found_codes"])
+    bilinmeyen = onbellek.get("turu_bilinmeyen", [])
     fon_ozet = f"son veri tarihinde {bulunan_n}/{istenen_n} fon bulundu"
     eksik_not = ("<span class=\"missing-note\">Eksik kodlar: "
                  + html_lib.escape(", ".join(eksik)) + "</span>") if eksik else ""
@@ -325,12 +417,21 @@ def html_uret(cfg, onbellek):
     if bosluk_n:
         eksik_not += ("<span class=\"missing-note\">Ardışık TEFAS gözlemi olmayan "
                       f"{bosluk_n} fon-gün akışı hesaplanmadı.</span>")
+    if bilinmeyen:
+        eksik_not += ("<span class=\"missing-note\">TEFAS fon türünü açıklamadığı için "
+                      f"kapsam dışı kalan {len(bilinmeyen)} fon: "
+                      + html_lib.escape(", ".join(bilinmeyen)) + "</span>")
+    # null = "hesaplanamadı" (ardışık TEFAS gözlemi yok). Fonun piyasaya
+    # çıkışından önceki / kapanışından sonraki günler ile çıkış gününün kendisi
+    # boşluk değildir: akışa 0 katkı verir ve dönem toplamını iptal etmez.
+    bosluk_kodlari = {t: set(x) for t, x in durum["bosluklar"].items()}
     raw = {
         "d": gunler,
         "ad": {k: onbellek["ad"].get(k, k) for k in kodlar},
         "tip": {k: onbellek.get("tip", {}).get(k, "YAT") for k in kodlar},
         "grup": GRUP_AD,
-        "f": {k: [round(akis[t][k]) if k in akis.get(t, {}) else None
+        "f": {k: [round(akis[t][k]) if k in akis.get(t, {})
+                  else (None if k in bosluk_kodlari.get(t, ()) else 0)
                   for t in gunler] for k in kodlar},
         "gap_count": bosluk_n,
     }
@@ -345,28 +446,120 @@ def html_uret(cfg, onbellek):
         "gap_count": bosluk_n,
         "recent_gap_count": durum["recent_gap_count"],
         "gap_codes": sorted({k for x in durum["bosluklar"].values() for k in x}),
+        "untyped_count": len(bilinmeyen),
+        "untyped": list(bilinmeyen),
         "count_label": "fon",
         "source": "TEFAS",
     }
-    with open(TEMPLATE, encoding="utf-8") as f:
-        html = f.read()
-    tr = lambda iso: "{2}.{1}.{0}".format(*iso.split("-"))
-    html = (html.replace("__RAW__", script_json(raw))
-                .replace("__REPORT_META__", script_json(report_meta))
-                .replace("__BASLIK__", cfg["baslik"])
-                .replace("__FON_N__", str(bulunan_n))
-                .replace("__ISTENEN_N__", str(istenen_n))
-                .replace("__FON_OZET__", fon_ozet)
-                .replace("__EKSIK_NOT__", eksik_not)
-                .replace("__ILK_TARIH__", tr(gunler[0]))
-                .replace("__SON_TARIH__", tr(gunler[-1])))
-    for yol in (cfg["html"], cfg["desktop"]):
-        try:
-            with open(yol, "w", encoding="utf-8") as f:
-                f.write(html)
-        except OSError as e:
-            log(f"{yol} yazılamadı: {e}")
+    html_yaz(cfg, raw, report_meta, fon_ozet, eksik_not, gunler)
     return bulunan_n, len(gunler)
+
+
+# --- grup bazlı toplam raporu -----------------------------------------------
+
+def toplam_satirlari(cfg):
+    """Kaynak raporların önbelleklerinden (grup, fon tipi) satırları üretir.
+
+    Yeni veri çekilmez: her kaynak rapor kendi önbelleğini kendi koşusunda
+    tazeler, bu rapor yalnızca onları toplar. Bir grubun bir günkü toplamı, o
+    gruptaki fonlardan birinin akışı hesaplanamıyorsa (ardışık TEFAS gözlemi
+    yok) null bırakılır — kısmi toplam tam sonuç gibi gösterilmez.
+    """
+    satirlar = []
+    bosluk_n = 0
+    yakin_bosluk_n = 0
+    bilinmeyen = set()
+    for kaynak in cfg["kapsam"]["kaynaklar"]:
+        alt = rapor_yukle(kaynak["rapor"])
+        if not os.path.exists(alt["cache"]):
+            raise RuntimeError(
+                f"{kaynak['rapor']} önbelleği yok ({alt['cache']}); "
+                "grup raporu kaynak raporlardan sonra çalışır"
+            )
+        with open(alt["cache"], encoding="utf-8") as f:
+            onbellek = json.load(f)
+        akis, gunler, _, bosluklar = akis_serisi(onbellek)
+        bosluk_n += sum(len(x) for x in bosluklar.values())
+        if gunler:
+            kesim = (dt.date.fromisoformat(gunler[-1]) - dt.timedelta(days=89)).isoformat()
+            yakin_bosluk_n += sum(len(x) for t, x in bosluklar.items() if t >= kesim)
+        bilinmeyen |= set(onbellek.get("turu_bilinmeyen", []))
+        tipler = onbellek.get("tip", {})
+        for tip in alt["fon_tipleri"]:
+            kodlar = {k for k, t in tipler.items() if t == tip}
+            if not kodlar:
+                continue
+            seri = {}
+            for t in gunler:
+                gunun = akis.get(t, {})
+                if kodlar & set(bosluklar.get(t, {})):
+                    seri[t] = None          # gruptaki bir fon hesaplanamadı
+                    continue
+                hesaplanan = kodlar & set(gunun)
+                seri[t] = sum(gunun[k] for k in hesaplanan) if hesaplanan else None
+            satirlar.append({
+                "anahtar": f"{kaynak['kod']}-{tip}",
+                "ad": f"{kaynak['grup']} — {GRUP_AD[tip]}",
+                "tip": tip,
+                "fon_sayisi": len(kodlar),
+                "seri": seri,
+            })
+    return satirlar, bosluk_n, yakin_bosluk_n, sorted(bilinmeyen)
+
+
+def toplam_html_uret(cfg):
+    satirlar, bosluk_n, yakin_bosluk_n, bilinmeyen = toplam_satirlari(cfg)
+    if not satirlar:
+        raise RuntimeError("grup raporunda satır yok")
+    gunler = kesin_tarihler(sorted({t for s in satirlar for t in s["seri"]}))
+    if not gunler:
+        raise RuntimeError("raporlanabilir TEFAS tarihi yok")
+    son = gunler[-1]
+    bulunan = [s for s in satirlar if s["seri"].get(son) is not None]
+    eksik = [s["anahtar"] for s in satirlar if s["seri"].get(son) is None]
+    sirali = sorted(satirlar,
+                    key=lambda s: -sum(abs(s["seri"].get(t) or 0) for t in gunler))
+    fon_sayisi = sum(s["fon_sayisi"] for s in satirlar)
+    fon_ozet = (f"son veri tarihinde {len(bulunan)}/{len(satirlar)} grup toplandı "
+                f"({fon_sayisi} fon)")
+    eksik_not = ("<span class=\"missing-note\">Son veri tarihinde toplanamayan gruplar: "
+                 + html_lib.escape(", ".join(eksik)) + "</span>") if eksik else ""
+    if bosluk_n:
+        eksik_not += ("<span class=\"missing-note\">Kaynak raporlarda ardışık TEFAS "
+                      f"gözlemi olmayan {bosluk_n} fon-gün; o günün grup toplamı "
+                      "boş bırakıldı.</span>")
+    if bilinmeyen:
+        eksik_not += ("<span class=\"missing-note\">TEFAS fon türünü açıklamadığı için "
+                      f"kapsam dışı kalan {len(bilinmeyen)} fon: "
+                      + html_lib.escape(", ".join(bilinmeyen)) + "</span>")
+    raw = {
+        "d": gunler,
+        "ad": {s["anahtar"]: s["ad"] for s in sirali},
+        "tip": {s["anahtar"]: s["tip"] for s in sirali},
+        "grup": GRUP_AD,
+        "f": {s["anahtar"]: [None if s["seri"].get(t) is None else round(s["seri"][t])
+                             for t in gunler] for s in sirali},
+        "gap_count": bosluk_n,
+    }
+    report_meta = {
+        "last_successful_run": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
+        "data_end_date": son,
+        "expected_count": len(satirlar),
+        "found_count": len(bulunan),
+        "missing": eksik,
+        "uncomputed_count": len(eksik),
+        "uncomputed": eksik,
+        "gap_count": bosluk_n,
+        "recent_gap_count": yakin_bosluk_n,
+        "gap_codes": [],
+        "fund_count": fon_sayisi,
+        "untyped_count": len(bilinmeyen),
+        "untyped": bilinmeyen,
+        "count_label": "grup",
+        "source": "TEFAS",
+    }
+    html_yaz(cfg, raw, report_meta, fon_ozet, eksik_not, gunler)
+    return len(bulunan), len(gunler), eksik
 
 
 def main():
@@ -375,6 +568,15 @@ def main():
     if "--rapor" in argv:
         ad = argv[argv.index("--rapor") + 1]
     cfg = rapor_yukle(ad)
+
+    if cfg["kapsam"]["tip"] == "toplam":
+        # Grup raporu veri çekmez; kaynak raporların önbelleklerini toplar.
+        grup, gun, eksik = toplam_html_uret(cfg)
+        print(f"OK: {gun} gün × {grup} grup → {cfg['html']}")
+        if eksik:
+            print("Son veri tarihinde toplanamayan gruplar: " + ", ".join(eksik))
+            return 4
+        return 0
 
     if "--no-fetch" in argv:
         with open(cfg["cache"], encoding="utf-8") as f:

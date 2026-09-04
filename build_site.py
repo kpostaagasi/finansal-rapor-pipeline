@@ -40,6 +40,42 @@ REPORTS = (
         "source": "3_tefas_fon_akis_maili/tefas_secili_akis.html",
         "target": "tefas_secili_akis.html",
     },
+    {
+        "title": "TEFAS Fon Gruplarına Net Akış (grup bazında)",
+        "description": "Tüm şemsiye ve fon türlerinin grup bazında toplam net giriş ve çıkışları.",
+        "source": "3_tefas_fon_akis_maili/tefas_gruplar_akis.html",
+        "target": "tefas_fon_gruplari.html",
+    },
+    {
+        "title": "TEFAS Kıymetli Maden Fonlarına Net Akış",
+        "description": "Kıymetli maden yatırım ve emeklilik fonlarının fon bazında net giriş ve çıkışları.",
+        "source": "3_tefas_fon_akis_maili/tefas_kiymetli_akis.html",
+        "target": "tefas_kiymetli_maden.html",
+    },
+    {
+        "title": "TEFAS Para Piyasası Fonlarına Net Akış",
+        "description": "Para piyasası yatırım ve emeklilik fonlarının fon bazında net giriş ve çıkışları.",
+        "source": "3_tefas_fon_akis_maili/tefas_para_akis.html",
+        "target": "tefas_para_piyasasi.html",
+    },
+    {
+        "title": "TEFAS Katılım Fonlarına Net Akış",
+        "description": "Katılım (faizsiz) yatırım ve emeklilik fonlarının fon bazında net giriş ve çıkışları.",
+        "source": "3_tefas_fon_akis_maili/tefas_katilim_akis.html",
+        "target": "tefas_katilim.html",
+    },
+    {
+        "title": "TEFAS Hisse Senedi Fonlarına Net Akış",
+        "description": "Hisse senedi yatırım ve emeklilik fonlarının fon bazında net giriş ve çıkışları.",
+        "source": "3_tefas_fon_akis_maili/tefas_hisse_akis.html",
+        "target": "tefas_hisse.html",
+    },
+    {
+        "title": "TEFAS Borçlanma Araçları Fonlarına Net Akış",
+        "description": "Borçlanma araçları yatırım ve emeklilik fonlarının fon bazında net giriş ve çıkışları.",
+        "source": "3_tefas_fon_akis_maili/tefas_borclanma_akis.html",
+        "target": "tefas_borclanma.html",
+    },
 )
 
 

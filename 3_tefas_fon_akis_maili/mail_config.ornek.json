@@ -1,12 +1,11 @@
 {
-  "allow_publish": false,
-  "allow_send": false,
   "sender": "gonderen@example.com",
-  "sender_name": "Ad Soyad",
   "recipients": [
     "alici1@example.com",
     "alici2@example.com"
   ],
+  "allow_publish": false,
+  "allow_send": false,
   "smtp_host": "smtp.gmail.com",
   "smtp_port": 587,
   "keychain_service": "model_portfoy_smtp",
@@ -14,6 +13,12 @@
   "github_repo": "KULLANICI/DEPO",
   "raporlar": [
     "altin",
-    "secili"
+    "secili",
+    "kiymetli_maden",
+    "para_piyasasi",
+    "katilim",
+    "hisse",
+    "borclanma",
+    "gruplar"
   ]
 }

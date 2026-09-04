@@ -1,0 +1,29 @@
+{
+  "ad": "borclanma",
+  "baslik": "TEFAS Borçlanma Araçları Fonlarına Net Akış",
+  "kapsam": {
+    "tip": "tur",
+    "turler": {
+      "YAT": [
+        "Borçlanma Araçları Şemsiye Fonu"
+      ],
+      "EMK": [
+        "Borçlanma Araçları Fonu",
+        "Dış Borçlanma Araçları Fonu",
+        "Kamu Borçlanma Araçları Fonu",
+        "Özel Sektör Borçlanma Araçları Fonu",
+        "Kamu Yabancı Para (Döviz) Cinsinden Borçlanma Araç"
+      ]
+    }
+  },
+  "fon_tipleri": [
+    "YAT",
+    "EMK"
+  ],
+  "cache": "borclanma_veri.json",
+  "html": "tefas_borclanma_akis.html",
+  "desktop": "~/Documents/TEFAS_Borclanma_Akis.html",
+  "github_path": "tefas_borclanma.html",
+  "url": "https://kpostaagasi.github.io/finansal-raporlar/tefas_borclanma.html",
+  "mail_ad": "TEFAS Borçlanma Araçları Fonlarına Net Akış"
+}

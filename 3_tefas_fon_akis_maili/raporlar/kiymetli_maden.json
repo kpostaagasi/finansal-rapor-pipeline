@@ -1,0 +1,27 @@
+{
+  "ad": "kiymetli_maden",
+  "baslik": "TEFAS Kıymetli Maden Fonlarına Net Akış",
+  "kapsam": {
+    "tip": "tur",
+    "turler": {
+      "YAT": [
+        "Kıymetli Madenler Şemsiye Fonu"
+      ],
+      "EMK": [
+        "Kıymetli Madenler",
+        "Altın Fonu",
+        "Altın Katılım Fonu"
+      ]
+    }
+  },
+  "fon_tipleri": [
+    "YAT",
+    "EMK"
+  ],
+  "cache": "kiymetli_veri.json",
+  "html": "tefas_kiymetli_akis.html",
+  "desktop": "~/Documents/TEFAS_KiymetliMaden_Akis.html",
+  "github_path": "tefas_kiymetli_maden.html",
+  "url": "https://kpostaagasi.github.io/finansal-raporlar/tefas_kiymetli_maden.html",
+  "mail_ad": "TEFAS Kıymetli Maden Fonlarına Net Akış"
+}

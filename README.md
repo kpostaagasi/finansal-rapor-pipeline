@@ -150,12 +150,48 @@ env -u PYTHONPATH .venv/bin/python reconcile_tefas.py \
 Komut cache'leri değiştirmez; fark yoksa `0`, fon/gözlem/revizyon farkı varsa `1`
 ile çıkar ve ayrıntıları JSON olarak stdout'a yazar.
 
+### Rapor tanımları ve kapsam tipleri
+
+Her rapor `raporlar/<ad>.json` dosyasıyla tanımlanır; `kapsam.tip` alanı fon
+evreninin nasıl belirlendiğini söyler:
+
+| `kapsam.tip` | Evren nereden gelir | Kullanan raporlar |
+|---|---|---|
+| `liste` | Elle seçilmiş kod listesi (`fonlar.json`) | `secili` (25 fon) |
+| `altin` | YAT tarafı unvan kuralı, EMK tarafı altın fon türleri | `altin` (49 + 16 fon) |
+| `tur` | TEFAS fon türü (`fonTurAciklama`) | `kiymetli_maden`, `para_piyasasi`, `borclanma`, `katilim`, `hisse` |
+| `toplam` | Türetilmiş: kaynak raporların önbelleklerini toplar | `gruplar` |
+
 - `raporlar/altin.json` — TEFAS'ın iki altın filtresinin birebir karşılığı
   (YAT tarafı unvan kuralı 49 fon, EMK tarafı `fonTurAciklama ∈ {Altın Fonu,
   Altın Katılım Fonu}` 16 fon). Eski grup bazlı raporla ortak 395 günde
   **%0,000 sapmayla** aynı sonucu veriyor; iki üreticinin evreni testle
   eşitleniyor.
 - `raporlar/secili.json` + `fonlar.json` — elle seçilmiş fon listesi.
+- Fon grubu raporları (`tur`): kıymetli maden 27+20, para piyasası 85+13,
+  borçlanma araçları 86+45, katılım 112+85, hisse senedi 198+42 fon
+  (YAT+EMK, 04.09.2026). Türler `kapsam.turler` içinde fon tipine göre ayrı
+  listelenir; TEFAS'ın tür adı değişirse kapsam sessizce boşalmaz, rapor
+  metadata'sındaki `expected_count` düşer ve dashboard `Eksik veri` gösterir.
+- `raporlar/gruplar.json` — grup bazında toplam akış. **Veri çekmez**, kaynak
+  raporların önbelleklerini toplar; bu yüzden onlardan **sonra** çalışmalıdır
+  (workflow'da sıra böyle). Gruptaki bir fonun akışı hesaplanamıyorsa o günün
+  grup toplamı boş bırakılır.
+
+**Tür bilinmeyen fonlar:** fon türü yalnızca TEFAS yönetim bilgisi ucundan
+geliyor ve o uç günlük veri veren her fonu kapsamıyor (04.09.2026'da 2.041
+fonun 13'ü yok — çoğu Albaraka katılım serbest fonu, toplam 101 mlr TL, evrenin
+%1'i). Bu fonlar tür bazlı kapsamda sessizce elenmez: önbellekte
+`turu_bilinmeyen` alanına, rapor metadata'sında `untyped`/`untyped_count`
+alanlarına ve sayfanın altbaşlığına yazılır.
+
+Yeni bir grup raporunu ilk kez kurmak (~13 dk; TEFAS pencere sınırı ve rate
+limiti yüzünden):
+
+```bash
+env -u PYTHONPATH .venv/bin/python 3_tefas_fon_akis_maili/tefas_secili.py \
+  --rapor para_piyasasi --bootstrap
+```
 
 ## Zamanlama
 

@@ -1,0 +1,26 @@
+{
+  "ad": "hisse",
+  "baslik": "TEFAS Hisse Senedi Fonlarına Net Akış",
+  "kapsam": {
+    "tip": "tur",
+    "turler": {
+      "YAT": [
+        "Hisse Senedi Şemsiye Fonu"
+      ],
+      "EMK": [
+        "Hisse Senedi Fonu",
+        "Katılım Hisse Senedi Fonu"
+      ]
+    }
+  },
+  "fon_tipleri": [
+    "YAT",
+    "EMK"
+  ],
+  "cache": "hisse_veri.json",
+  "html": "tefas_hisse_akis.html",
+  "desktop": "~/Documents/TEFAS_Hisse_Akis.html",
+  "github_path": "tefas_hisse.html",
+  "url": "https://kpostaagasi.github.io/finansal-raporlar/tefas_hisse.html",
+  "mail_ad": "TEFAS Hisse Senedi Fonlarına Net Akış"
+}

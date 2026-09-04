@@ -54,7 +54,10 @@ def load_config():
 
 def rapor_configleri(cfg):
     import tefas_secili as ts
-    return [ts.rapor_yukle(ad) for ad in cfg.get("raporlar", ["secili"])]
+    raporlar = [ts.rapor_yukle(ad) for ad in cfg.get("raporlar", ["secili"])]
+    # Türetilmiş rapor (grup toplamı) kaynak raporların önbelleklerini okur;
+    # config'te nerede yazıldığından bağımsız olarak en sona alınır.
+    return sorted(raporlar, key=lambda r: r["kapsam"]["tip"] == "toplam")
 
 
 def keychain_password(service, account):

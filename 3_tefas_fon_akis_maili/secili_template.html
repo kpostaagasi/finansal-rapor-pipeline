@@ -219,6 +219,10 @@
 <script>
 const REPORT_META = __REPORT_META__;
 const RAW = __RAW__;
+// Satır birimi: fon bazlı raporlarda "fon", grup bazlı raporda "grup".
+const BIRIM = REPORT_META.count_label || 'fon';
+const BIRIM_COGUL = BIRIM === 'grup' ? 'gruplar' : 'fonlar';
+const BIRIM_BASLIK = BIRIM === 'grup' ? 'Grup' : 'Fon';
 
 const $ = s => document.querySelector(s);
 const cv = $('#cv'), plot = $('#plot'), tt = $('#tt');
@@ -471,7 +475,7 @@ function showTT(idx, px) {
   if (sirali.length > 6) {
     const r = document.createElement('div'); r.className = 'tt-row';
     const nm = document.createElement('span'); nm.className = 'tt-name';
-    nm.textContent = `+${sirali.length - 6} fon daha`;
+    nm.textContent = `+${sirali.length - 6} ${BIRIM} daha`;
     r.append(nm); tt.appendChild(r);
   }
   const r = document.createElement('div'); r.className = 'tt-row tt-tot';
@@ -512,9 +516,12 @@ document.querySelectorAll('.filters').forEach(grup => {
   });
 });
 
-// --- fon seçimi ---
+// --- satır (fon / grup) seçimi ---
 (function fonChipleri() {
   const host = $('#funds');
+  const etiket = host.querySelector('.lbl');
+  if (etiket) etiket.textContent = BIRIM_COGUL.toUpperCase();
+  host.setAttribute('aria-label', BIRIM_BASLIK + 'lar');
   KODLAR.forEach(k => {
     const b = document.createElement('button');
     b.className = 'chip'; b.textContent = k; b.title = RAW.ad[k] || k;
@@ -575,7 +582,8 @@ function yenile() {
   hoverIdx = -1;
   hideTT();
   S = seriKur();
-  $('#chartTitle').textContent = PERIYOT_AD[agg] + ' net akış (seçili fonlar toplamı)';
+  $('#chartTitle').textContent = `${PERIYOT_AD[agg]} net akış (seçili ${BIRIM_COGUL} toplamı)`;
+  $('#rankTitle').textContent = `${BIRIM_BASLIK} bazında dönem toplamı`;
   $('#thPeriod').textContent = agg === 'd' ? 'Tarih' : agg === 'w' ? 'Hafta' : 'Ay';
   $('#tblSum').textContent = `Veri tablosu — ${PERIYOT_AD[agg].toLowerCase()} (${S.length} satır)`;
   tiles();
@@ -608,7 +616,7 @@ function tiles() {
     t.append(l, v, s); host.appendChild(t);
   };
   karo('Dönem toplamı', fmtCompact(toplam),
-       `${dönem} · ${gun} işlem günü · ${aktif.length} fon`,
+       `${dönem} · ${gun} işlem günü · ${aktif.length} ${BIRIM}`,
        Number.isFinite(toplam) ? (toplam >= 0 ? 'up' : 'down') : '');
   if (fonToplam.length) {
     const [ek, ev] = fonToplam[0];
