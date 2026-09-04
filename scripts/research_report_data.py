@@ -137,15 +137,34 @@ def _validate_flow_report(value: Any, field: str, group: bool) -> None:
         _validate_numeric_series(values, len(dates), f"{field}.series.f.{code}")
 
 
+# Fon akışı artifactindeki zorunlu raporlar. `gold_total` grup serisi (yf/eyf)
+# taşır; diğerleri satır bazlı seri (f/ad) taşır — `fund_groups` satırları fon
+# değil grup olsa da yapı aynıdır, bu yüzden aynı kurallarla doğrulanır.
+GROUP_SERIES_REPORTS = ("gold_total",)
+REQUIRED_FUND_REPORTS = (
+    "gold_total",
+    "gold_by_fund",
+    "selected_funds",
+    "precious_metals",
+    "money_market",
+    "participation",
+    "equity",
+    "debt",
+    "fund_groups",
+)
+
+
 def _validate_fund_artifact(data: Mapping[str, Any]) -> None:
     reports = _require_mapping(data.get("reports"), "data.reports")
-    required = {"gold_total", "gold_by_fund", "selected_funds"}
-    missing = sorted(required - reports.keys())
+    missing = sorted(set(REQUIRED_FUND_REPORTS) - reports.keys())
     if missing:
         raise ReportContractError("zorunlu fon raporu eksik: " + ", ".join(missing))
-    _validate_flow_report(reports["gold_total"], "data.reports.gold_total", group=True)
-    _validate_flow_report(reports["gold_by_fund"], "data.reports.gold_by_fund", group=False)
-    _validate_flow_report(reports["selected_funds"], "data.reports.selected_funds", group=False)
+    for key in sorted(reports):
+        _validate_flow_report(
+            reports[key],
+            f"data.reports.{key}",
+            group=key in GROUP_SERIES_REPORTS,
+        )
 
 
 def _validate_market_artifact(value: Mapping[str, Any], data: Mapping[str, Any]) -> None:

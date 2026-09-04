@@ -28,12 +28,13 @@ def load_module():
 DATES = ["2026-09-02", "2026-09-03"]
 
 
-def report_html(raw: dict, expected: int) -> str:
+def report_html(raw: dict, expected: int, count_label: str = "fon") -> str:
     meta = {
         "data_end_date": DATES[-1],
         "expected_count": expected,
         "found_count": expected,
         "missing": [],
+        "count_label": count_label,
         "source": "TEFAS",
     }
     return (
@@ -45,21 +46,25 @@ def report_html(raw: dict, expected: int) -> str:
 
 
 def build(module, selected_funds: dict[str, list[float]]):
+    """Dokuz raporun tamamını sentetik HTML'lerden kurar."""
     group = report_html({"d": DATES, "yf": [1.0, 2.0], "eyf": [3.0, 4.0]}, 65)
-    gold = report_html(
-        {"d": DATES, "f": {"AFO": [1.0, 2.0]}, "ad": {"AFO": "AK PORTFÖY ALTIN FONU"}},
-        65,
-    )
-    selected = report_html(
+    satirli = lambda satirlar, birim="fon": report_html(
         {
             "d": DATES,
-            "f": selected_funds,
-            "ad": {code: f"{code} FONU" for code in selected_funds},
+            "f": satirlar,
+            "ad": {kod: f"{kod} SATIRI" for kod in satirlar},
         },
-        len(selected_funds),
+        len(satirlar),
+        birim,
     )
+    sources = {"gold_total": group}
+    for key in ("gold_by_fund", "precious_metals", "money_market",
+                "participation", "equity", "debt"):
+        sources[key] = satirli({"AFO": [1.0, 2.0]})
+    sources["selected_funds"] = satirli(selected_funds)
+    sources["fund_groups"] = satirli({"PAR-YAT": [5.0, 6.0]}, birim="grup")
     return module.build_fund_artifact(
-        group, gold, selected, today=date.fromisoformat(DATES[-1])
+        sources, today=date.fromisoformat(DATES[-1])
     )
 
 
@@ -94,7 +99,30 @@ class ResearchArtifactTests(unittest.TestCase):
                 "gold_total": "Altın Fonları Toplam Net Akış",
                 "gold_by_fund": "Altın Fonları Fon Bazında Net Akış",
                 "selected_funds": "Seçili Fonlara Net Akış",
+                "precious_metals": "Kıymetli Maden Fonlarına Net Akış",
+                "money_market": "Para Piyasası Fonlarına Net Akış",
+                "participation": "Katılım Fonlarına Net Akış",
+                "equity": "Hisse Senedi Fonlarına Net Akış",
+                "debt": "Borçlanma Araçları Fonlarına Net Akış",
+                "fund_groups": "Fon Gruplarına Net Akış",
             },
+        )
+
+    def test_missing_report_source_fails_closed(self):
+        module = load_module()
+        sources = {"gold_total": report_html({"d": DATES, "yf": [1.0, 2.0],
+                                              "eyf": [3.0, 4.0]}, 65)}
+        with self.assertRaises(ValueError) as ctx:
+            module.build_fund_artifact(sources)
+        self.assertIn("zorunlu rapor kaynağı eksik", str(ctx.exception))
+
+    def test_group_rows_keep_their_unit_label(self):
+        module = load_module()
+        artifact = build(module, {"TLY": [1.0, 2.0]})
+        gruplar = artifact["data"]["reports"]["fund_groups"]
+        self.assertEqual(gruplar["metadata"]["count_label"], "grup")
+        self.assertEqual(
+            artifact["data"]["reports"]["equity"]["metadata"]["count_label"], "fon"
         )
 
 

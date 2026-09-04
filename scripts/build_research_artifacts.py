@@ -63,26 +63,46 @@ def _read_report(source: str, data_name: str) -> tuple[dict[str, Any], dict[str,
     return raw, meta
 
 
+# Fon akışı raporları: (anahtar, başlık, üretici HTML'inin repo içi yolu).
+# Başlıklara fon/grup sayısı yazılmaz: kapsam değiştiğinde başlık sessizce
+# yanlışa döner. Gerçek sayı metadata.expected_count'ta.
+FUND_REPORTS = (
+    ("gold_total", "Altın Fonları Toplam Net Akış",
+     ("2_tefas_altin_akis", "tefas_net_akis.html")),
+    ("gold_by_fund", "Altın Fonları Fon Bazında Net Akış",
+     ("3_tefas_fon_akis_maili", "tefas_altin_akis.html")),
+    ("selected_funds", "Seçili Fonlara Net Akış",
+     ("3_tefas_fon_akis_maili", "tefas_secili_akis.html")),
+    ("precious_metals", "Kıymetli Maden Fonlarına Net Akış",
+     ("3_tefas_fon_akis_maili", "tefas_kiymetli_akis.html")),
+    ("money_market", "Para Piyasası Fonlarına Net Akış",
+     ("3_tefas_fon_akis_maili", "tefas_para_akis.html")),
+    ("participation", "Katılım Fonlarına Net Akış",
+     ("3_tefas_fon_akis_maili", "tefas_katilim_akis.html")),
+    ("equity", "Hisse Senedi Fonlarına Net Akış",
+     ("3_tefas_fon_akis_maili", "tefas_hisse_akis.html")),
+    ("debt", "Borçlanma Araçları Fonlarına Net Akış",
+     ("3_tefas_fon_akis_maili", "tefas_borclanma_akis.html")),
+    ("fund_groups", "Fon Gruplarına Net Akış",
+     ("3_tefas_fon_akis_maili", "tefas_gruplar_akis.html")),
+)
+FUND_REPORT_TITLES = {key: title for key, title, _ in FUND_REPORTS}
+
+
 def build_fund_artifact(
-    group_html: str,
-    gold_detail_html: str,
-    selected_html: str,
+    sources: dict[str, str],
     generated_at: str | None = None,
     today: date | None = None,
 ) -> dict[str, Any]:
-    """Üç TEFAS çıktısını tek, sürümlü ve fail-closed artifacte sarar."""
-    # Başlıklara fon sayısı yazılmaz: liste değiştiğinde artifact başlığı
-    # sessizce yanlışa döner. Gerçek sayı metadata.expected_count'ta.
-    inputs = [
-        ("gold_total", "Altın Fonları Toplam Net Akış", group_html),
-        ("gold_by_fund", "Altın Fonları Fon Bazında Net Akış", gold_detail_html),
-        ("selected_funds", "Seçili Fonlara Net Akış", selected_html),
-    ]
+    """TEFAS akış çıktılarını tek, sürümlü ve fail-closed artifacte sarar."""
+    missing = [key for key, _, _ in FUND_REPORTS if key not in sources]
+    if missing:
+        raise ValueError("zorunlu rapor kaynağı eksik: " + ", ".join(missing))
     reports: dict[str, Any] = {}
     dates: list[str] = []
     statuses: list[str] = []
-    for key, title, source in inputs:
-        series, meta = _read_report(source, "RAW")
+    for key, title, _ in FUND_REPORTS:
+        series, meta = _read_report(sources[key], "RAW")
         status = classify_metadata(meta, today=today)
         statuses.append(status)
         dates.append(str(meta["data_end_date"]))
@@ -149,10 +169,20 @@ def build_market_artifact(
     return validate_artifact(artifact, "commodities_treasury")
 
 
-def _json_bytes(value: Any) -> bytes:
-    return (
-        json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
-    ).encode("utf-8")
+def _json_bytes(value: Any, *, compact: bool = False) -> bytes:
+    """Deterministik JSON baytları; hash manifesti bu baytlar üzerinden kurulur.
+
+    Artifact gövdeleri `compact` yazılır: 9 raporun günlük serileri satır satır
+    girintilendiğinde dosya bilgi eklemeden ~2,5 katına çıkıyor (7,8 MB'a karşı
+    3,1 MB). Manifest küçük ve elle okunuyor, girintili kalır.
+    """
+    if compact:
+        payload = json.dumps(
+            value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
+    else:
+        payload = json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
+    return (payload + "\n").encode("utf-8")
 
 
 def _atomic_write(path: Path, raw: bytes) -> None:
@@ -183,8 +213,8 @@ def write_snapshot(
     validate_artifact(market, "commodities_treasury")
     root = Path(output_dir)
     payloads = {
-        "fund_flows.json": _json_bytes(fund),
-        "commodities_treasury.json": _json_bytes(market),
+        "fund_flows.json": _json_bytes(fund, compact=True),
+        "commodities_treasury.json": _json_bytes(market, compact=True),
     }
     entries = {
         name: {
@@ -205,23 +235,25 @@ def write_snapshot(
     _atomic_write(root / "manifest.json", _json_bytes(manifest))
 
 
+MARKET_SOURCE = ("1_emtia_tahvil_maili", "emtia_futures.html")
+
+
+def _read_source(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise RuntimeError(f"zorunlu kaynak okunamadı: {path}: {exc}") from exc
+
+
 def build_from_source(source_root: Path, generated_at: str | None = None):
-    paths = {
-        "group": source_root / "2_tefas_altin_akis" / "tefas_net_akis.html",
-        "gold": source_root / "3_tefas_fon_akis_maili" / "tefas_altin_akis.html",
-        "selected": source_root / "3_tefas_fon_akis_maili" / "tefas_secili_akis.html",
-        "market": source_root / "1_emtia_tahvil_maili" / "emtia_futures.html",
+    sources = {
+        key: _read_source(source_root.joinpath(*parts))
+        for key, _, parts in FUND_REPORTS
     }
-    contents = {}
-    for key, path in paths.items():
-        try:
-            contents[key] = path.read_text(encoding="utf-8")
-        except OSError as exc:
-            raise RuntimeError(f"zorunlu kaynak okunamadı: {path}: {exc}") from exc
-    fund = build_fund_artifact(
-        contents["group"], contents["gold"], contents["selected"], generated_at
+    fund = build_fund_artifact(sources, generated_at)
+    market = build_market_artifact(
+        _read_source(source_root.joinpath(*MARKET_SOURCE)), generated_at
     )
-    market = build_market_artifact(contents["market"], generated_at)
     return fund, market
 
 
