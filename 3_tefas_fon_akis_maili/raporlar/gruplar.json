@@ -5,6 +5,11 @@
     "tip": "toplam",
     "kaynaklar": [
       {
+        "kod": "ALT",
+        "grup": "Altın fonları",
+        "rapor": "altin"
+      },
+      {
         "kod": "KIY",
         "grup": "Kıymetli maden fonları",
         "rapor": "kiymetli_maden"
@@ -36,5 +41,6 @@
   "desktop": "~/Documents/TEFAS_Fon_Gruplari_Akis.html",
   "github_path": "tefas_fon_gruplari.html",
   "url": "https://kpostaagasi.github.io/finansal-raporlar/tefas_fon_gruplari.html",
-  "mail_ad": "TEFAS Fon Gruplarına Net Akış"
+  "mail_ad": "TEFAS Fon Gruplarına Net Akış",
+  "_not": "Satırlar TEMATİK ve birbirini kapsayabilir (altın ⊂ kıymetli maden; altın/gümüş katılım fonları hem kıymetli maden hem katılım satırında). Bu yüzden satırlar arası toplam gösterilmez: her satır kendi içinde toplanır, örtüşen satırlar seçildiğinde dönem toplamı boş bırakılır."
 }

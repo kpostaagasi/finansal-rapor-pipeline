@@ -182,10 +182,22 @@ evreninin nasıl belirlendiğini söyler:
   PLATİN, PALADYUM, KIYMETLİ MADEN) ve altın evrenini kapsadığı testle
   kilitli. Unvan tuzakları: `GÜMÜŞSUYU` semt adıdır, `ÖZEL BANKACILIK VE
   PLATİNUM` hizmet segmentidir, `MADENCİLİK` sektör fonudur — üçü de elenir.
-- `raporlar/gruplar.json` — grup bazında toplam akış. **Veri çekmez**, kaynak
-  raporların önbelleklerini toplar; bu yüzden onlardan **sonra** çalışmalıdır
-  (workflow'da sıra böyle). Gruptaki bir fonun akışı hesaplanamıyorsa o günün
-  grup toplamı boş bırakılır.
+- `raporlar/gruplar.json` — grup bazında akış, **12 satır** (6 grup × YAT/EMK;
+  altın, kıymetli maden, para piyasası, borçlanma, katılım, hisse senedi).
+  **Veri çekmez**, kaynak raporların önbelleklerini toplar; bu yüzden onlardan
+  **sonra** çalışmalıdır (workflow'da sıra böyle). Gruptaki bir fonun akışı
+  hesaplanamıyorsa o günün grup toplamı boş bırakılır.
+
+  **Satırlar tematik, ayrık değil — bu yüzden toplanamaz.** Altının 66 fonunun
+  tamamı kıymetli maden satırında; altın/gümüş katılım fonları hem kıymetli
+  maden hem katılım satırında; "Katılım Hisse Senedi Fonu" hem katılım hem
+  hisse satırında. 12 satırda 810 satır-fon ama **703 tekil fon** var. Üretici
+  örtüşme haritasını hesaplayıp `RAW.ortak` ve `metadata.overlap_pairs`
+  alanlarına yazıyor; sayfa örtüşen satırlar birlikte seçildiğinde dönem
+  toplamı yerine **"— örtüşen gruplar"** gösteriyor (ayrık seçimde normal
+  toplam). `metadata.additive` alanı satırların toplanabilirliğini bildirir.
+  Ayrık bir piyasa haritası isteniyorsa satırlar şemsiye türü bölümlemesine
+  taşınmalı — o zaman altın satırı olamaz (altın bir şemsiye türü değil).
 
 **Tür bilinmeyen fonlar:** fon türü yalnızca TEFAS yönetim bilgisi ucundan
 geliyor ve o uç günlük veri veren her fonu kapsamıyor (04.09.2026'da 2.041

@@ -224,6 +224,20 @@ const BIRIM = REPORT_META.count_label || 'fon';
 const BIRIM_COGUL = BIRIM === 'grup' ? 'gruplar' : 'fonlar';
 const BIRIM_BASLIK = BIRIM === 'grup' ? 'Grup' : 'Fon';
 
+// RAW.ortak: {satır: {diğer satır: ortak fon sayısı}} — yalnız grup raporunda.
+// Seçili satırlardan ikisi aynı fonu paylaşıyorsa ilk çakışmayı adıyla döndürür.
+function ortakCift(aktif) {
+  const harita = RAW.ortak;
+  if (!harita) return null;
+  for (let i = 0; i < aktif.length; i++) {
+    for (let j = i + 1; j < aktif.length; j++) {
+      const n = (harita[aktif[i]] || {})[aktif[j]];
+      if (n) return `${aktif[i]} ∩ ${aktif[j]}: ${n} fon ortak`;
+    }
+  }
+  return null;
+}
+
 const $ = s => document.querySelector(s);
 const cv = $('#cv'), plot = $('#plot'), tt = $('#tt');
 const cv2 = $('#cv2');
@@ -615,9 +629,17 @@ function tiles() {
     const s = document.createElement('div'); s.className = 'sub'; s.textContent = sub;
     t.append(l, v, s); host.appendChild(t);
   };
-  karo('Dönem toplamı', fmtCompact(toplam),
-       `${dönem} · ${gun} işlem günü · ${aktif.length} ${BIRIM}`,
-       Number.isFinite(toplam) ? (toplam >= 0 ? 'up' : 'down') : '');
+  // Tematik gruplar birbirini kapsayabilir (altın ⊂ kıymetli maden). Örtüşen
+  // satırlar birlikte seçildiğinde toplam çift sayım olur; gösterilmez.
+  const cakisma = ortakCift(aktif);
+  if (cakisma) {
+    karo('Dönem toplamı', '— örtüşen gruplar',
+         `${cakisma} · toplam gösterilmiyor (çift sayım)`, '');
+  } else {
+    karo('Dönem toplamı', fmtCompact(toplam),
+         `${dönem} · ${gun} işlem günü · ${aktif.length} ${BIRIM}`,
+         Number.isFinite(toplam) ? (toplam >= 0 ? 'up' : 'down') : '');
+  }
   if (fonToplam.length) {
     const [ek, ev] = fonToplam[0];
     karo('En çok giriş', fmtCompact(ev), `${ek} — ${RAW.ad[ek] || ''}`, ev >= 0 ? 'up' : 'down');

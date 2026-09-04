@@ -286,7 +286,7 @@ class ReportConfigTests(unittest.TestCase):
                 self.assertIn(cfg["github_path"], hedefler)
                 self.assertIn(f"3_tefas_fon_akis_maili/{cfg['html']}", kaynaklar)
 
-    def test_group_report_sources_exist_and_are_fund_level(self):
+    def test_group_report_sources_are_fund_level_reports(self):
         gruplar = json.loads((RAPOR_DIZIN / "gruplar.json").read_text(encoding="utf-8"))
         kodlar = set()
         for kaynak in gruplar["kapsam"]["kaynaklar"]:
@@ -294,9 +294,31 @@ class ReportConfigTests(unittest.TestCase):
                 yol = RAPOR_DIZIN / f"{kaynak['rapor']}.json"
                 self.assertTrue(yol.exists())
                 alt = json.loads(yol.read_text(encoding="utf-8"))
-                self.assertEqual(alt["kapsam"]["tip"], "tur")
+                # Kaynak fon bazında olmalı; türetilmiş rapor kaynak olamaz.
+                self.assertIn(alt["kapsam"]["tip"], ("tur", "altin", "liste"))
+                self.assertNotEqual(alt["kapsam"]["tip"], "toplam")
+                self.assertTrue(alt.get("cache"))
                 self.assertNotIn(kaynak["kod"], kodlar, "grup kodu tekrarı")
                 kodlar.add(kaynak["kod"])
+
+    def test_group_report_declares_that_its_rows_overlap(self):
+        """Tematik satırlar ayrık değil; sayfa bunu bilmeli ve toplam iddia etmemeli."""
+        module = load_module()
+        cfg = {
+            "ad": "gruplar",
+            "kapsam": {"tip": "toplam", "kaynaklar": []},
+        }
+        satirlar = [
+            {"anahtar": "ALT-YAT", "tip": "YAT", "kodlar": {"AFO", "KZL"}},
+            {"anahtar": "KIY-YAT", "tip": "YAT", "kodlar": {"AFO", "KZL", "GUM"}},
+            {"anahtar": "PAR-YAT", "tip": "YAT", "kodlar": {"PRY"}},
+            {"anahtar": "ALT-EMK", "tip": "EMK", "kodlar": {"BGL"}},
+        ]
+        ortak = module.ortak_fonlar(satirlar)
+        self.assertEqual(ortak["ALT-YAT"], {"KIY-YAT": 2})
+        self.assertEqual(ortak["KIY-YAT"], {"ALT-YAT": 2})
+        self.assertNotIn("PAR-YAT", ortak)          # ayrık satır
+        self.assertNotIn("ALT-EMK", ortak)          # farklı fon tipi karışmaz
 
 
 if __name__ == "__main__":

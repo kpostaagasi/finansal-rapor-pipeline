@@ -547,10 +547,29 @@ def toplam_satirlari(cfg):
                 "anahtar": f"{kaynak['kod']}-{tip}",
                 "ad": f"{kaynak['grup']} — {GRUP_AD[tip]}",
                 "tip": tip,
+                "kodlar": kodlar,
                 "fon_sayisi": len(kodlar),
                 "seri": seri,
             })
     return satirlar, bosluk_n, yakin_bosluk_n, sorted(bilinmeyen)
+
+
+def ortak_fonlar(satirlar):
+    """{satır: {diğer satır: ortak fon sayısı}} — satırlar tematik, ayrık değil.
+
+    Altın fonlarının tamamı kıymetli maden satırında, altın/gümüş katılım
+    fonları hem kıymetli maden hem katılım satırında yer alır. Örtüşen satırlar
+    birlikte seçilirse toplamları anlamsızdır; sayfa bunu bu haritayla bilir.
+    """
+    ortak = {}
+    for a in satirlar:
+        for b in satirlar:
+            if a is b or a["tip"] != b["tip"]:
+                continue
+            kesisim = a["kodlar"] & b["kodlar"]
+            if kesisim:
+                ortak.setdefault(a["anahtar"], {})[b["anahtar"]] = len(kesisim)
+    return ortak
 
 
 def toplam_html_uret(cfg):
@@ -566,14 +585,26 @@ def toplam_html_uret(cfg):
     sirali = sorted(satirlar,
                     key=lambda s: -sum(abs(s["seri"].get(t) or 0) for t in gunler))
     fon_sayisi = sum(s["fon_sayisi"] for s in satirlar)
+    tekil_fon = len({k for s in satirlar for k in s["kodlar"]})
+    ortak = ortak_fonlar(satirlar)
+    ortak_ciftler = sorted(
+        {(min(a, b), max(a, b), n)
+         for a, komsular in ortak.items() for b, n in komsular.items()},
+        key=lambda x: -x[2],
+    )
     fon_ozet = (f"son veri tarihinde {len(bulunan)}/{len(satirlar)} grup toplandı "
-                f"({fon_sayisi} fon)")
+                f"({tekil_fon} tekil fon)")
     eksik_not = ("<span class=\"missing-note\">Son veri tarihinde toplanamayan gruplar: "
                  + html_lib.escape(", ".join(eksik)) + "</span>") if eksik else ""
     if bosluk_n:
         eksik_not += ("<span class=\"missing-note\">Kaynak raporlarda ardışık TEFAS "
                       f"gözlemi olmayan {bosluk_n} fon-gün; o günün grup toplamı "
                       "boş bırakıldı.</span>")
+    if ortak_ciftler:
+        ozet = ", ".join(f"{a}∩{b}: {n} fon" for a, b, n in ortak_ciftler[:6])
+        eksik_not += ("<span class=\"missing-note\">Gruplar tematik, ayrık değil "
+                      f"({ozet}). Örtüşen gruplar birlikte seçilirse dönem toplamı "
+                      "gösterilmez — çift sayım olurdu.</span>")
     if bilinmeyen:
         eksik_not += ("<span class=\"missing-note\">TEFAS fon türünü açıklamadığı için "
                       f"kapsam dışı kalan {len(bilinmeyen)} fon: "
@@ -586,6 +617,7 @@ def toplam_html_uret(cfg):
         "f": {s["anahtar"]: [None if s["seri"].get(t) is None else round(s["seri"][t])
                              for t in gunler] for s in sirali},
         "gap_count": bosluk_n,
+        "ortak": ortak,
     }
     report_meta = {
         "last_successful_run": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
@@ -598,7 +630,10 @@ def toplam_html_uret(cfg):
         "gap_count": bosluk_n,
         "recent_gap_count": yakin_bosluk_n,
         "gap_codes": [],
-        "fund_count": fon_sayisi,
+        "fund_count": tekil_fon,
+        "row_fund_count": fon_sayisi,
+        "overlap_pairs": [{"a": a, "b": b, "fon": n} for a, b, n in ortak_ciftler],
+        "additive": not ortak_ciftler,
         "untyped_count": len(bilinmeyen),
         "untyped": bilinmeyen,
         "count_label": "grup",
