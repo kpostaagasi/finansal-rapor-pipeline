@@ -15,10 +15,33 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / "scripts" / "build_research_artifacts.py"
+RRD_MODULE_PATH = ROOT / "scripts" / "research_report_data.py"
+DASHBOARD_RRD_PATH = (
+    Path.home()
+    / "Documents"
+    / "GitHub"
+    / "bv-fon-dashboard"
+    / "Güncellenecek Kodlar"
+    / "research_report_data.py"
+)
 
 
 def load_module():
     spec = importlib.util.spec_from_file_location("research_artifacts_test", MODULE_PATH)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_rrd_module(path: Path = RRD_MODULE_PATH, name: str = "research_report_data_test"):
+    """`research_report_data.py`'yi bağımsız bir modül olarak yükler.
+
+    `build_research_artifacts.py`'nin kendi `sys.path` içine eklediği kopyadan
+    ayrı tutulur: amaç iki tarafı (üretici çıktısı ve sözleşme sabiti) birbirinden
+    bağımsız okuyup karşılaştırmak.
+    """
+    spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
@@ -136,6 +159,49 @@ class ResearchArtifactTests(unittest.TestCase):
         self.assertEqual(
             artifact["data"]["reports"]["equity"]["metadata"]["count_label"], "fon"
         )
+
+    def test_fund_artifact_schema_version_matches_contract_module(self):
+        """Regresyon: `build_fund_artifact` çıktısındaki `schema_version` üretici
+        içinde tekrar sabit bir sayıya (ör. eski `1`) döner ya da bump edilmesi
+        unutulursa, bu değer `research_report_data.SCHEMA_VERSION`'dan sapar ve
+        bu test kırılır — tam olarak 04.09.2026'da yaşanan uyuşmazlığın sınıfı."""
+        module = load_module()
+        rrd = load_rrd_module()
+        artifact = build(module, {"TLY": [1.0, 2.0]})
+        self.assertEqual(artifact["schema_version"], rrd.SCHEMA_VERSION)
+
+    def test_schema_version_matches_dashboard_copy(self):
+        """Regresyon: pipeline ve dashboard depolarındaki `research_report_data.py`
+        kopyalarından biri bump edilip diğeri edilmezse (kod GitHub → Streamlit
+        Cloud, veri Pages ile bağımsız dağıtıldığı için tam olarak böyle bir
+        ayrışma üretimde yanıltıcı hataya yol açmıştı) bu test yakalar. Dashboard
+        deposu bu makinede yoksa test atlanır, kırılmaz."""
+        if not DASHBOARD_RRD_PATH.is_file():
+            self.skipTest(f"dashboard deposu bulunamadı: {DASHBOARD_RRD_PATH}")
+        local = load_rrd_module()
+        dashboard = load_rrd_module(
+            DASHBOARD_RRD_PATH, name="research_report_data_dashboard_test"
+        )
+        self.assertEqual(local.SCHEMA_VERSION, dashboard.SCHEMA_VERSION)
+
+    def test_schema_version_mismatch_fails_closed(self):
+        """Regresyon: artifact veya farklı sürümde üretilmiş bir manifest kod
+        sürümünden sapan bir `schema_version` taşırsa (eski/yeni deploy karışımı),
+        `validate_artifact` bunu sessizce kabul edip yanıltıcı 'zorunlu ... eksik'
+        hatasına dönüşmemeli; `ArtifactSchemaMismatch` ile fail-closed düşmeli ve
+        mesaj her iki sürümü de bildirmeli."""
+        module = load_module()
+        rrd = load_rrd_module()
+        artifact = build(module, {"TLY": [1.0, 2.0]})
+        for bad_version in (rrd.SCHEMA_VERSION - 1, rrd.SCHEMA_VERSION + 1):
+            with self.subTest(bad_version=bad_version):
+                mutated = dict(artifact)
+                mutated["schema_version"] = bad_version
+                with self.assertRaises(rrd.ArtifactSchemaMismatch) as ctx:
+                    rrd.validate_artifact(mutated, "fund_flows")
+                message = str(ctx.exception)
+                self.assertIn(str(bad_version), message)
+                self.assertIn(str(rrd.SCHEMA_VERSION), message)
 
 
 if __name__ == "__main__":

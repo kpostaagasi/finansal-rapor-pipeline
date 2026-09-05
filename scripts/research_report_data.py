@@ -13,7 +13,13 @@ from pathlib import Path
 from typing import Any, Mapping
 
 
-SCHEMA_VERSION = 1
+# Artifact şema sürümü. Rapor kümesi değiştiğinde (ör. 04.09.2026'da altın
+# toplamı çıkıp fon grubu raporları girdiğinde) BUMP EDİLİR: kod ile veri
+# birbirinden bağımsız dağıtıldığı için (kod GitHub → Streamlit Cloud, veri
+# Pages) bayat bir çalışan yeni veriyi okuyabiliyor. Sürüm el sıkışması
+# olmadan bu durum "zorunlu fon raporu eksik: gold_total" gibi yanıltıcı bir
+# hataya dönüşüyordu; artık sürüm uyuşmazlığı olarak, kendini anlatarak düşer.
+SCHEMA_VERSION = 2
 ALLOWED_STATUS = {"ready", "partial", "stale", "failed"}
 EXPECTED_FILES = {
     "fund_flows.json": "fund_flows",
@@ -47,6 +53,15 @@ REQUIRED_FIELDS = {
 
 class ReportContractError(ValueError):
     """Artifact veya manifest sözleşmesi geçersiz olduğunda yükselir."""
+
+
+class ArtifactSchemaMismatch(ReportContractError):
+    """Artifact şema sürümü bu kod sürümünün beklediğinden farklı.
+
+    Veri bozuk değil: taraflardan biri bayat. Arayüz bu ayrımı kullanıcıya
+    doğru eylemi söylemek için kullanır (yeniden üretim değil, yeniden başlatma
+    ya da dağıtım güncellemesi).
+    """
 
 
 def _parse_date(value: Any, field: str) -> date:
@@ -311,8 +326,9 @@ def validate_artifact(value: Any, expected_type: str) -> dict[str, Any]:
     if missing:
         raise ReportContractError("zorunlu alan eksik: " + ", ".join(missing))
     if value["schema_version"] != SCHEMA_VERSION:
-        raise ReportContractError(
-            f"desteklenmeyen schema_version: {value['schema_version']!r}"
+        raise ArtifactSchemaMismatch(
+            f"artifact şema sürümü {value['schema_version']!r}, bu sürüm "
+            f"{SCHEMA_VERSION!r} bekliyor"
         )
     if value["report_type"] != expected_type:
         raise ReportContractError(
@@ -334,8 +350,13 @@ def validate_artifact(value: Any, expected_type: str) -> dict[str, Any]:
 
 def _manifest_entries(manifest: Any) -> dict[str, Any]:
     """Manifest sözleşmesini doğrular ve `files` sözlüğünü döndürür."""
-    if not isinstance(manifest, dict) or manifest.get("schema_version") != SCHEMA_VERSION:
-        raise ReportContractError("manifest schema_version geçersiz")
+    if not isinstance(manifest, dict):
+        raise ReportContractError("manifest JSON nesnesi olmalı")
+    if manifest.get("schema_version") != SCHEMA_VERSION:
+        raise ArtifactSchemaMismatch(
+            f"manifest şema sürümü {manifest.get('schema_version')!r}, bu sürüm "
+            f"{SCHEMA_VERSION!r} bekliyor"
+        )
     _parse_datetime(manifest.get("generated_at"), "manifest.generated_at")
     entries = manifest.get("files")
     if not isinstance(entries, dict):

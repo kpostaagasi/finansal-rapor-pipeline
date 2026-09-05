@@ -25,6 +25,7 @@ if str(MODULE_DIR) not in sys.path:
     sys.path.insert(0, str(MODULE_DIR))
 
 from research_report_data import (  # noqa: E402  # pyright: ignore[reportMissingImports]
+    SCHEMA_VERSION,
     classify_metadata,
     validate_artifact,
 )
@@ -116,7 +117,7 @@ def build_fund_artifact(
         }
 
     artifact = {
-        "schema_version": 1,
+        "schema_version": SCHEMA_VERSION,
         "report_type": "fund_flows",
         "generated_at": _generated_at(generated_at),
         "latest_data_date": min(dates),
@@ -152,7 +153,7 @@ def build_market_artifact(
     clean_data = dict(data)
     clean_data.pop("report_meta", None)
     artifact = {
-        "schema_version": 1,
+        "schema_version": SCHEMA_VERSION,
         "report_type": "commodities_treasury",
         "generated_at": _generated_at(generated_at),
         "latest_data_date": str(meta["data_end_date"]),
@@ -230,7 +231,7 @@ def write_snapshot(
     for name, raw in payloads.items():
         _atomic_write(root / name, raw)
     manifest = {
-        "schema_version": 1,
+        "schema_version": SCHEMA_VERSION,
         "generated_at": _generated_at(generated_at),
         "files": entries,
     }
