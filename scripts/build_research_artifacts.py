@@ -20,7 +20,17 @@ from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-MODULE_DIR = REPO_ROOT / "scripts"
+# research_report_data.py D'de "Güncellenecek Kodlar/" altında, P'de "scripts/"
+# altında yaşıyor; iki repo bu dosyanın birebir aynı kopyasını tutmak zorunda
+# (sözleşme senkronu), bu yüzden sabit bir yol yerine konum keşfedilir.
+MODULE_DIR = next(
+    (
+        candidate
+        for candidate in (REPO_ROOT / "Güncellenecek Kodlar", REPO_ROOT / "scripts")
+        if (candidate / "research_report_data.py").is_file()
+    ),
+    REPO_ROOT / "scripts",
+)
 if str(MODULE_DIR) not in sys.path:
     sys.path.insert(0, str(MODULE_DIR))
 
@@ -148,8 +158,9 @@ def build_market_artifact(
     meta = dict(meta)
     meta["max_quote_age_days"] = 5
     status = classify_metadata(meta, today=today)
-    if meta.get("treasury_found_count") != meta.get("treasury_expected_count"):
-        status = _worst_status([status, "partial"])
+    # Hazine eğrisi UI'dan çıkarıldı ve sözleşmede opsiyonel (F6): görünmeyen
+    # Hazine kapsamı artık status'ü partial'a düşürmüyor. Emtia eğrilerinin
+    # kendi kapsamı (classify_metadata) status'ü belirlemeye devam ediyor.
     clean_data = dict(data)
     clean_data.pop("report_meta", None)
     artifact = {
@@ -207,18 +218,25 @@ def _atomic_write(path: Path, raw: bytes) -> None:
 
 def write_snapshot(
     output_dir: Path | str,
-    fund: dict[str, Any],
-    market: dict[str, Any],
+    fund: dict[str, Any] | None = None,
+    market: dict[str, Any] | None = None,
     generated_at: str | None = None,
 ) -> None:
-    """İki artifacti yazar; manifest en son atomik değişir ve snapshotı aktive eder."""
-    validate_artifact(fund, "fund_flows")
-    validate_artifact(market, "commodities_treasury")
+    """Sağlanan artifact(ler)i doğrulayıp yazar; manifest en son atomik değişir
+    ve snapshotı aktive eder.
+
+    `fund`/`market` bağımsız üretildiğinden (bkz. `main`) biri `None` olabilir:
+    o durumda yalnız sağlanan artifact yazılır ve manifestte yer alır — hiç
+    üretilmemiş bir artifact için sahte bir manifest girdisi oluşturulmaz (F6).
+    """
     root = Path(output_dir)
-    payloads = {
-        "fund_flows.json": _json_bytes(fund, compact=True),
-        "commodities_treasury.json": _json_bytes(market, compact=True),
-    }
+    payloads: dict[str, bytes] = {}
+    if fund is not None:
+        validate_artifact(fund, "fund_flows")
+        payloads["fund_flows.json"] = _json_bytes(fund, compact=True)
+    if market is not None:
+        validate_artifact(market, "commodities_treasury")
+        payloads["commodities_treasury.json"] = _json_bytes(market, compact=True)
     entries = {
         name: {
             "report_type": (
@@ -248,15 +266,30 @@ def _read_source(path: Path) -> str:
         raise RuntimeError(f"zorunlu kaynak okunamadı: {path}: {exc}") from exc
 
 
-def build_from_source(source_root: Path, generated_at: str | None = None):
+def _build_fund_from_source(
+    source_root: Path, generated_at: str | None = None
+) -> dict[str, Any]:
     sources = {
         key: _read_source(source_root.joinpath(*parts))
         for key, _, parts in FUND_REPORTS
     }
-    fund = build_fund_artifact(sources, generated_at)
-    market = build_market_artifact(
+    return build_fund_artifact(sources, generated_at)
+
+
+def _build_market_from_source(
+    source_root: Path, generated_at: str | None = None
+) -> dict[str, Any]:
+    return build_market_artifact(
         _read_source(source_root.joinpath(*MARKET_SOURCE)), generated_at
     )
+
+
+def build_from_source(source_root: Path, generated_at: str | None = None):
+    """İki artifacti birlikte üretir (ilk hatada yükselir); testlerde ve tek
+    parça kaynak doğrulamasında kullanılır. `main` artifactleri ayrı ayrı
+    üretip yazar (bkz. F6) — biri başarısız olsa da diğerini kaybetmez."""
+    fund = _build_fund_from_source(source_root, generated_at)
+    market = _build_market_from_source(source_root, generated_at)
     return fund, market
 
 
@@ -270,12 +303,34 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     generated = datetime.now().astimezone().isoformat(timespec="seconds")
+
+    # İki artifact bağımsız üretilir: biri başarısız olsa da diğeri yine
+    # yazılır. Eskiden tek `try` ikisini birlikte düşürüyordu — Hazine kaynağı
+    # eksik olduğunda fon akışı artifact'i de yazılmıyor, pano her iki
+    # sekmede günlerce bayat veri gösteriyordu (F6).
+    fund: dict[str, Any] | None = None
+    market: dict[str, Any] | None = None
+    failures: list[str] = []
     try:
-        fund, market = build_from_source(args.source_root, generated)
-        write_snapshot(args.output_dir, fund, market, generated)
+        fund = _build_fund_from_source(args.source_root, generated)
     except (OSError, RuntimeError, ValueError) as exc:
-        print(f"HATA: Research artifactleri üretilemedi: {exc}", file=sys.stderr)
+        failures.append(f"fon akışları üretilemedi: {exc}")
+    try:
+        market = _build_market_from_source(args.source_root, generated)
+    except (OSError, RuntimeError, ValueError) as exc:
+        failures.append(f"emtia/Hazine üretilemedi: {exc}")
+
+    if fund is not None or market is not None:
+        try:
+            write_snapshot(args.output_dir, fund, market, generated)
+        except (OSError, RuntimeError, ValueError) as exc:
+            failures.append(f"snapshot yazılamadı: {exc}")
+
+    if failures:
+        for failure in failures:
+            print(f"HATA: {failure}", file=sys.stderr)
         return 1
+
     print(
         f"OK: {args.output_dir} — fon akışları={fund['status']}, "
         f"emtia/Hazine={market['status']}"

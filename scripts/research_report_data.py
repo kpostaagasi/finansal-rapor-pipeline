@@ -48,6 +48,7 @@ REQUIRED_FIELDS = {
     "source",
     "status",
     "data",
+    "methodology",
 }
 
 
@@ -127,15 +128,54 @@ def _validate_report_metadata(value: Any, field: str) -> Mapping[str, Any]:
         or found > expected
     ):
         raise ReportContractError(f"{field} kapsam sayıları geçersiz")
+    candidate_count = meta.get("candidate_count")
+    if candidate_count is not None:
+        # Aday vade sayısı yalnız bazı raporlarda anlamlı (ör. emtia eğrisi
+        # top-level metadata'sı); varsa hedeften küçük olamaz.
+        if (
+            isinstance(candidate_count, bool)
+            or not isinstance(candidate_count, int)
+            or candidate_count < expected
+        ):
+            raise ReportContractError(f"{field}.candidate_count geçersiz")
     return meta
 
 
-def _validate_flow_report(value: Any, field: str) -> None:
+def _validate_flow_report(value: Any, field: str, report_key: str) -> None:
     report = _require_mapping(value, field)
     _require_text(report.get("title"), f"{field}.title")
     if report.get("status") not in ALLOWED_STATUS:
         raise ReportContractError(f"{field}.status geçersiz")
-    _validate_report_metadata(report.get("metadata"), f"{field}.metadata")
+    meta = _validate_report_metadata(report.get("metadata"), f"{field}.metadata")
+    # count_label satır evrenini belirler (fon mu grup mu); düşerse görünüm
+    # varsayılan "fon"a döner ve grup satırları fon evrenine sızıp fonlarla
+    # birlikte çift sayılır (F8 — count_label fund_groups'ta düşerse çift sayım).
+    expected_label = "grup" if report_key == "fund_groups" else "fon"
+    count_label = meta.get("count_label")
+    if count_label not in ("fon", "grup"):
+        raise ReportContractError(f"{field}.metadata.count_label geçersiz: {count_label!r}")
+    if count_label != expected_label:
+        raise ReportContractError(
+            f"{field}.metadata.count_label {count_label!r}; beklenen {expected_label!r}"
+        )
+    overlap_pairs = meta.get("overlap_pairs")
+    if overlap_pairs is not None:
+        if not isinstance(overlap_pairs, list):
+            raise ReportContractError(f"{field}.metadata.overlap_pairs liste olmalı")
+        for pair_index, pair_value in enumerate(overlap_pairs):
+            pair = _require_mapping(
+                pair_value, f"{field}.metadata.overlap_pairs[{pair_index}]"
+            )
+            _require_text(pair.get("a"), f"{field}.metadata.overlap_pairs[{pair_index}].a")
+            _require_text(pair.get("b"), f"{field}.metadata.overlap_pairs[{pair_index}].b")
+            fon = pair.get("fon")
+            if isinstance(fon, bool) or not isinstance(fon, int):
+                raise ReportContractError(
+                    f"{field}.metadata.overlap_pairs[{pair_index}].fon tam sayı olmalı"
+                )
+    additive = meta.get("additive")
+    if additive is not None and not isinstance(additive, bool):
+        raise ReportContractError(f"{field}.metadata.additive boolean olmalı")
     series = _require_mapping(report.get("series"), f"{field}.series")
     dates = _validate_dates(series.get("d"), f"{field}.series.d")
     funds = _require_mapping(series.get("f"), f"{field}.series.f")
@@ -174,7 +214,7 @@ def _validate_fund_artifact(data: Mapping[str, Any]) -> None:
     if extra:
         raise ReportContractError("beklenmeyen fon raporu: " + ", ".join(extra))
     for key in sorted(reports):
-        _validate_flow_report(reports[key], f"data.reports.{key}")
+        _validate_flow_report(reports[key], f"data.reports.{key}", key)
 
 
 def _validate_market_artifact(value: Mapping[str, Any], data: Mapping[str, Any]) -> None:
@@ -191,12 +231,29 @@ def _validate_market_artifact(value: Mapping[str, Any], data: Mapping[str, Any])
     if source_run.tzinfo is None:
         raise ReportContractError("metadata.last_successful_run saat dilimi içermeli")
 
-    for key in ("treasury_expected_count", "treasury_found_count"):
-        if not isinstance(meta.get(key), int) or isinstance(meta.get(key), bool):
-            raise ReportContractError(f"metadata.{key} geçersiz")
-    treasury_expected = meta["treasury_expected_count"]
-    treasury_found = meta["treasury_found_count"]
-    if treasury_expected < 0 or treasury_found < 0 or treasury_found > treasury_expected:
+    # Hazine eğrisi UI'dan çıkarıldı (research_reports_view._render_treasury
+    # kaldırıldı); sözleşmede de artık opsiyonel — görünmeyen Hazine verisi
+    # görünen emtia sekmesinin durumunu bayatlatmamalı (F6). Varsa tip ve
+    # tutarlılık kontrol edilir, yoksa sessizce geçilir.
+    treasury_expected = meta.get("treasury_expected_count")
+    treasury_found = meta.get("treasury_found_count")
+    for treasury_key, treasury_value in (
+        ("treasury_expected_count", treasury_expected),
+        ("treasury_found_count", treasury_found),
+    ):
+        if treasury_value is None:
+            continue
+        if (
+            isinstance(treasury_value, bool)
+            or not isinstance(treasury_value, int)
+            or treasury_value < 0
+        ):
+            raise ReportContractError(f"metadata.{treasury_key} geçersiz")
+    if (
+        treasury_expected is not None
+        and treasury_found is not None
+        and treasury_found > treasury_expected
+    ):
         raise ReportContractError("metadata Hazine kapsam sayıları geçersiz")
 
     metadata_excluded = meta.get("excluded_stale_quotes")
@@ -217,12 +274,28 @@ def _validate_market_artifact(value: Mapping[str, Any], data: Mapping[str, Any])
         raise ReportContractError("data.curves liste olmalı")
     point_symbols = set()
     curve_excluded_symbols = set()
+    curve_keys: set[str] = set()
+    curve_titles: set[str] = set()
     total_points = 0
     total_requested = 0
     for curve_index, curve_value in enumerate(curves):
         curve = _require_mapping(curve_value, f"data.curves[{curve_index}]")
-        _require_text(curve.get("key"), f"data.curves[{curve_index}].key")
-        _require_text(curve.get("title"), f"data.curves[{curve_index}].title")
+        curve_key = _require_text(curve.get("key"), f"data.curves[{curve_index}].key")
+        curve_title = _require_text(curve.get("title"), f"data.curves[{curve_index}].title")
+        if curve_key in curve_keys:
+            raise ReportContractError(f"tekrarlanan eğri key: {curve_key}")
+        curve_keys.add(curve_key)
+        if curve_title in curve_titles:
+            raise ReportContractError(f"tekrarlanan eğri title: {curve_title}")
+        curve_titles.add(curve_title)
+        _require_text(curve.get("unit"), f"data.curves[{curve_index}].unit")
+        curve_dec = curve.get("dec")
+        if (
+            isinstance(curve_dec, bool)
+            or not isinstance(curve_dec, int)
+            or not (0 <= curve_dec <= 6)
+        ):
+            raise ReportContractError(f"data.curves[{curve_index}].dec geçersiz")
         curve_found = curve.get("found_count")
         curve_requested = curve.get("requested_count")
         if (
@@ -234,6 +307,13 @@ def _validate_market_artifact(value: Mapping[str, Any], data: Mapping[str, Any])
             or curve_requested < curve_found
         ):
             raise ReportContractError(f"data.curves[{curve_index}] kapsam sayıları geçersiz")
+        curve_candidate = curve.get("candidate_count")
+        if (
+            isinstance(curve_candidate, bool)
+            or not isinstance(curve_candidate, int)
+            or curve_candidate < curve_requested
+        ):
+            raise ReportContractError(f"data.curves[{curve_index}].candidate_count geçersiz")
         points = curve.get("points")
         if not isinstance(points, list):
             raise ReportContractError(f"data.curves[{curve_index}].points liste olmalı")
@@ -304,18 +384,21 @@ def _validate_market_artifact(value: Mapping[str, Any], data: Mapping[str, Any])
     if overlap:
         raise ReportContractError("filtrelenen sembol eğriye dahil edilmiş: " + ", ".join(sorted(overlap)))
 
-    rates = _require_mapping(data.get("rates"), "data.rates")
-    rate_points = rates.get("points")
-    if not isinstance(rate_points, list):
-        raise ReportContractError("data.rates.points liste olmalı")
-    if treasury_found != len(rate_points):
-        raise ReportContractError("Hazine kapsamı points ile uyuşmuyor")
-    for point_index, point_value in enumerate(rate_points):
-        point = _require_mapping(point_value, f"data.rates.points[{point_index}]")
-        _require_text(point.get("label"), f"data.rates.points[{point_index}].label")
-        _validate_numeric_series(
-            [point.get("value")], 1, f"data.rates.points[{point_index}].value"
-        )
+    # Hazine eğrisi UI'dan çıkarıldı; data.rates de sözleşmede opsiyonel (F6).
+    rates_value = data.get("rates")
+    if rates_value is not None:
+        rates = _require_mapping(rates_value, "data.rates")
+        rate_points = rates.get("points")
+        if not isinstance(rate_points, list):
+            raise ReportContractError("data.rates.points liste olmalı")
+        if treasury_found is not None and treasury_found != len(rate_points):
+            raise ReportContractError("Hazine kapsamı points ile uyuşmuyor")
+        for point_index, point_value in enumerate(rate_points):
+            point = _require_mapping(point_value, f"data.rates.points[{point_index}]")
+            _require_text(point.get("label"), f"data.rates.points[{point_index}].label")
+            _validate_numeric_series(
+                [point.get("value")], 1, f"data.rates.points[{point_index}].value"
+            )
 
 
 def validate_artifact(value: Any, expected_type: str) -> dict[str, Any]:
@@ -340,6 +423,7 @@ def validate_artifact(value: Any, expected_type: str) -> dict[str, Any]:
     _parse_date(value["latest_data_date"], "latest_data_date")
     if not isinstance(value["source"], list) or not value["source"]:
         raise ReportContractError("source boş olmayan liste olmalı")
+    _require_mapping(value["methodology"], "methodology")
     data = _require_mapping(value["data"], "data")
     if expected_type == "fund_flows":
         _validate_fund_artifact(data)
