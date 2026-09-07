@@ -5,6 +5,7 @@ import re
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -137,6 +138,45 @@ class GroupReportMetadataTests(unittest.TestCase):
     def test_production_template_embeds_report_metadata(self):
         template = (MODULE_PATH.parent / "tefas_template.html").read_text(encoding="utf-8")
         self.assertIn("const REPORT_META = __REPORT_META__;", template)
+
+
+class IncrementalUpdateWindowTests(unittest.TestCase):
+    """B2: `veri_guncelle` her koşuda son N günü yeniden çeker (revizyon
+    kuyruğu) — mutant `bas = son + 1` bu kuyruğu hiç yeniden çekmez, TEFAS
+    revizyonları (bkz. contract) yakalanamaz."""
+
+    def test_incremental_update_refetches_the_revision_queue_window(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            son = "2026-08-20"
+            (root / "akis_veri.json").write_text(
+                json.dumps({"d": ["2026-08-01", son]}), encoding="utf-8"
+            )
+            module.CACHE = str(root / "akis_veri.json")
+            module.FON_CACHE = str(root / "fon_veri.json")
+
+            captured = {}
+
+            def sahte_topla(bas, bit, adlar=None):
+                captured["bas"] = bas
+                return (
+                    {"AAA": {"2026-08-21": (100, 1.0), "2026-08-22": (110, 1.0)}},
+                    {},
+                )
+
+            with (
+                patch.object(module, "topla", sahte_topla),
+                patch.object(module, "atomic_json_dump", lambda path, value: None),
+            ):
+                module.veri_guncelle(tam=False)
+
+            beklenen_bas = dt.date.fromisoformat(son) - dt.timedelta(days=module.INCREMENTAL_GUN)
+            self.assertEqual(captured["bas"], beklenen_bas)
+            self.assertNotEqual(
+                captured["bas"], dt.date.fromisoformat(son) + dt.timedelta(days=1)
+            )
+
 
 
 if __name__ == "__main__":

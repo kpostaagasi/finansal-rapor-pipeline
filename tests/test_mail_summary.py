@@ -83,6 +83,63 @@ class GroupSummaryTests(unittest.TestCase):
         self.assertTrue(ozet.startswith("6/8 grup · 02.09.2026"))
 
 
+class FundSummaryTests(unittest.TestCase):
+    """secili_mail.rapor_ozeti fon bazlı dal (kapsam.tip != 'toplam'): son TEFAS
+    veri gününün gerçek toplam net akışını `tefas_secili.akis_serisi`'nden okur."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.module = load_module()
+
+    @staticmethod
+    def _cache_yolu(tmp_dir):
+        """AAA ve BBB için üç günlük pay/fiyat serisi. Akışlar (pay_t - pay_onceki) *
+        fiyat_t: 2024-12-31 → AAA +100, BBB 0 (toplam +100); 2025-01-02 → AAA +200,
+        BBB +100 (toplam +300). İlk ve son günün toplamı bilerek FARKLI tutuldu."""
+        onbellek = {
+            "fon": {
+                "AAA": {
+                    "2024-12-30": [100, 10],
+                    "2024-12-31": [110, 10],
+                    "2025-01-02": [130, 10],
+                },
+                "BBB": {
+                    "2024-12-30": [50, 5],
+                    "2024-12-31": [50, 5],
+                    "2025-01-02": [70, 5],
+                },
+            }
+        }
+        cache_yolu = f"{tmp_dir}/secili.json"
+        with open(cache_yolu, "w", encoding="utf-8") as f:
+            json.dump(onbellek, f)
+        return cache_yolu
+
+    def test_fund_summary_reports_actual_net_flow_total(self):
+        """H: `toplam = 0` mutasyonuna karşı — son günün (2025-01-02) gerçek toplam
+        akışı (AAA +200, BBB +100 = +300 TL) literal olarak kilitlenir. Mutant
+        `toplam = 0` altında metin '0 TL' olurdu, bu tam eşitlik onu yakalar."""
+        with tempfile.TemporaryDirectory() as d:
+            rapor = {"ad": "secili", "kapsam": {"tip": "liste"}, "cache": self._cache_yolu(d)}
+            ozet = self.module.rapor_ozeti(rapor)
+        self.assertEqual(
+            ozet,
+            "2 fon · son işlem günü 02.01.2025: +300 TL net giriş",
+        )
+
+    def test_fund_summary_uses_last_data_day_not_first_day(self):
+        """H2: `son = gunler[0]` mutasyonuna karşı — özet son günü (2025-01-02,
+        +300 TL) anlatır; ilk günün (2024-12-31, +100 TL) tarihi/değeri hiç
+        geçmez. Mutant altında tarih '31.12.2024' ve tutar '+100 TL' olurdu."""
+        with tempfile.TemporaryDirectory() as d:
+            rapor = {"ad": "secili", "kapsam": {"tip": "liste"}, "cache": self._cache_yolu(d)}
+            ozet = self.module.rapor_ozeti(rapor)
+        self.assertIn("02.01.2025", ozet)
+        self.assertIn("+300 TL", ozet)
+        self.assertNotIn("31.12.2024", ozet)
+        self.assertNotIn("+100 TL", ozet)
+
+
 class FmtTlFormattingTests(unittest.TestCase):
     """fmt_tl: pano `_money` ile birebir aynı Türkçe biçim (binlik `.`, ondalık `,`, 0 işaretsiz)."""
 

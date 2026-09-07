@@ -211,6 +211,56 @@ class TypeScopeTests(unittest.TestCase):
         self.assertEqual(meta["launched_count"], 1)
         self.assertNotIn("NEW", meta["uncomputed"])
 
+    def test_uncomputed_positively_lists_the_fund_with_a_broken_series_gap(self):
+        """M8: kapsam_durumu['uncomputed'] hangi fon(lar)ı içerdiğini pozitif
+        olarak kilitler — yalnız assertNotIn ile mutant `uncomputed = []` de
+        testi geçerdi. PDR 08-01 ve 09-02'de gözlem verir ama aradaki gün
+        (09-01) eksik: ardışık TEFAS gözlemi olmadığı için akışı hesaplanamaz."""
+        cache = {
+            "fon": {
+                "PDR": {"2026-08-01": [1000, 1.0], "2026-09-02": [1010, 1.0]},
+                "REF": {"2026-09-01": [500, 1.0], "2026-09-02": [510, 1.0]},
+            },
+            "ad": {"PDR": "P", "REF": "R"},
+            "tip": {"PDR": "YAT", "REF": "YAT"},
+        }
+        cfg = {
+            "ad": "test",
+            "baslik": "Test",
+            "kapsam": {"tip": "tur", "turler": {"YAT": ["X"]}},
+            "fon_tipleri": ["YAT"],
+        }
+        durum = self.module.kapsam_durumu(cfg, cache)
+        self.assertEqual(durum["uncomputed"], ["PDR"])
+
+        meta = self.render(cfg, lambda: self.module.html_uret(cfg, cache))["meta"]
+        self.assertEqual(meta["uncomputed"], ["PDR"])
+        self.assertEqual(meta["uncomputed_count"], 1)
+
+    def test_type_scoped_missing_includes_a_fund_dropped_from_the_latest_cache(self):
+        """W: kapsam_durumu['beklenen'] dünün fonlarını da içermeli (`mevcut |
+        onceki_mevcut`) — mutant `beklenen = mevcut` tür kapsamlı raporlarda
+        'missing'i hep boşa düşürür. GONE dünden bugüne cache'ten (onbellek)
+        tamamen düşüyor; bu liste kapsamıyla değil tür kapsamıyla test
+        edilmeli (istenen_kodlar tür kapsamında [] döner, bu yüzden beklenen
+        kümesi tamamen mevcut|onceki_mevcut'a bağlıdır)."""
+        cache = {
+            "fon": {
+                "AAA": {"2026-09-01": [100, 1.0], "2026-09-02": [110, 1.0]},
+                "GONE": {"2026-09-01": [50, 1.0]},
+            },
+            "ad": {"AAA": "A", "GONE": "G"},
+            "tip": {"AAA": "YAT", "GONE": "YAT"},
+        }
+        cfg = {
+            "ad": "test",
+            "baslik": "Test",
+            "kapsam": {"tip": "tur", "turler": {"YAT": ["X"]}},
+            "fon_tipleri": ["YAT"],
+        }
+        durum = self.module.kapsam_durumu(cfg, cache)
+        self.assertEqual(durum["missing"], ["GONE"])
+
     def test_fund_level_group_label_map_never_exposes_the_combined_type(self):
         """GRUP_AD üç tipe (YAT/EMK/TUM) çıktı; fon bazlı raporların (html_uret)
         ürettiği raw['grup'] hâlâ yalnız YAT/EMK içermeli. TUM yalnızca grup

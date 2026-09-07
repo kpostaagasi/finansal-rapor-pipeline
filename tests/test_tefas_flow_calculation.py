@@ -25,6 +25,43 @@ class FundFlowCalculationTests(unittest.TestCase):
             "tefas_group_flow_test", "2_tefas_altin_akis/tefas_akis.py"
         )
 
+    def test_group_flow_invalid_zero_record_is_not_counted_as_a_valid_observation(self):
+        """M1b: gecerli_gozlem yalnızca tefas_akis.py'de zayıflarsa (ör.
+        pay>0/fiyat>0 kontrolü düşerse) [0,0] kaydı geçerli bir gözlem gibi
+        sayılır. Gerçek davranışta kayıt gözlem SAYILMAZ: o gün 'missing_current'a
+        düşer, sayım 0 kalır ve grup toplamı None olur (bkz. gecerli_gozlem)."""
+        funds = {
+            "PRY": {
+                "2026-09-03": [1_000_000, 10.0],
+                "2026-09-04": [0, 0],
+                "2026-09-05": [1_000_000, 10.0],
+            },
+        }
+        dates = ["2026-09-03", "2026-09-04", "2026-09-05"]
+
+        totals, counts, issues = self.group.akislari_hesapla(funds, dates)
+
+        self.assertEqual(counts["2026-09-04"], 0)
+        self.assertIsNone(totals["2026-09-04"])
+        self.assertEqual(issues["2026-09-04"]["missing_current"], ["PRY"])
+
+    def test_group_flow_total_is_none_when_member_present_yesterday_is_absent_today(self):
+        """G: 'missing_current' TEK BAŞINA (kopukluk/bölünme olmadan) grup
+        toplamını iptal etmeli — aksi halde kalan üyenin akışı kısmi bir
+        toplam olarak sızar (bkz. akislari_hesapla docstring)."""
+        funds = {
+            "A": {"2026-09-01": [100, 1.0], "2026-09-02": [110, 1.0]},
+            "B": {"2026-09-01": [200, 1.0]},   # yalnız d1'de var, d2'de yok
+        }
+        dates = ["2026-09-01", "2026-09-02"]
+
+        totals, counts, issues = self.group.akislari_hesapla(funds, dates)
+
+        self.assertIsNone(totals["2026-09-02"])
+        self.assertEqual(issues["2026-09-02"]["missing_current"], ["B"])
+        self.assertEqual(issues["2026-09-02"]["missing_previous"], [])
+        self.assertEqual(counts["2026-09-02"], 1)
+
     def test_selected_fund_suppresses_flow_when_previous_report_date_is_missing(self):
         cache = {
             "fon": {

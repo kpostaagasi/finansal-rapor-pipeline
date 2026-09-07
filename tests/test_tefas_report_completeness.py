@@ -109,6 +109,100 @@ class TefasReportCompletenessTests(unittest.TestCase):
             self.assertEqual(meta["missing"], ["BBB"])
             self.assertIn("Eksik kodlar: BBB", rendered)
 
+    def test_gap_count_and_note_reflect_the_actual_number_of_uncomputed_fund_days(self):
+        """X: report_meta['gap_count'] (ve raw['gap_count']) gerçek boşluk
+        sayısını yansıtmalı; eksik notundaki 'N fon-gün akışı hesaplanmadı'
+        cümlesi de aynı sayıyı taşımalı. Mutant `gap_count = 0` hem sayacı
+        sessizce sıfırlar hem notu hiç göstermez (bosluk_n falsy olur)."""
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "fonlar.json").write_text(
+                json.dumps({"fonlar": ["AAA", "GAP1"]}), encoding="utf-8"
+            )
+            template = root / "template.html"
+            template.write_text(
+                "__BASLIK__|__FON_N__/__ISTENEN_N__|__FON_OZET__|__EKSIK_NOT__|"
+                "__ILK_TARIH__|__SON_TARIH__|const REPORT_META = __REPORT_META__;|"
+                "const RAW = __RAW__;",
+                encoding="utf-8",
+            )
+            output = root / "report.html"
+            module.HERE = str(root)
+            module.TEMPLATE = str(template)
+            cfg = {
+                "baslik": "Test",
+                "kapsam": {"tip": "liste", "dosya": "fonlar.json"},
+                "html": str(output),
+                "desktop": str(root / "desktop.html"),
+            }
+            cache = {
+                "fon": {
+                    "AAA": {"2026-09-01": [100, 1.0], "2026-09-02": [110, 1.0],
+                            "2026-09-03": [120, 1.0]},
+                    "GAP1": {"2026-09-01": [10, 1.0], "2026-09-03": [30, 1.0]},  # 09-02 boşluk
+                },
+                "ad": {"AAA": "A", "GAP1": "G"},
+                "tip": {"AAA": "YAT", "GAP1": "YAT"},
+            }
+
+            module.html_uret(cfg, cache)
+            rendered = output.read_text(encoding="utf-8")
+            meta = json.loads(re.search(r"const REPORT_META = (\{.*?\});", rendered).group(1))
+            raw = json.loads(re.search(r"const RAW = (\{.*?\});", rendered).group(1))
+
+            self.assertEqual(meta["gap_count"], 1)
+            self.assertEqual(raw["gap_count"], 1)
+            self.assertIn(
+                "Ardışık TEFAS gözlemi olmayan 1 fon-gün akışı hesaplanmadı.",
+                rendered,
+            )
+
+    def test_raw_flow_cells_use_round_half_to_even_not_truncation(self):
+        """V: raw['f'] hücreleri round() ile üretilir. Gerçek Python
+        davranışı ölçüldü: round(3.5)=4 (bankacı yuvarlaması en yakın çift
+        sayıya gider), int(3.5)=3; round(-2.7)=-3, int(-2.7)=-2 — int()
+        kesmesine geçilirse bu hücreler sessizce farklı (yanlış) değer verir."""
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "fonlar.json").write_text(
+                json.dumps({"fonlar": ["TIE", "NEG"]}), encoding="utf-8"
+            )
+            template = root / "template.html"
+            template.write_text(
+                "__BASLIK__|__FON_N__/__ISTENEN_N__|__FON_OZET__|__EKSIK_NOT__|"
+                "__ILK_TARIH__|__SON_TARIH__|const REPORT_META = __REPORT_META__;|"
+                "const RAW = __RAW__;",
+                encoding="utf-8",
+            )
+            output = root / "report.html"
+            module.HERE = str(root)
+            module.TEMPLATE = str(template)
+            cfg = {
+                "baslik": "Test",
+                "kapsam": {"tip": "liste", "dosya": "fonlar.json"},
+                "html": str(output),
+                "desktop": str(root / "desktop.html"),
+            }
+            cache = {
+                "fon": {
+                    # (107-100)*0.5 = 3.5 -> round: 4 (en yakın çift), int: 3
+                    "TIE": {"2026-09-01": [100, 1.0], "2026-09-02": [107, 0.5]},
+                    # (73-100)*0.1 = -2.7 -> round: -3, int: -2
+                    "NEG": {"2026-09-01": [100, 1.0], "2026-09-02": [73, 0.1]},
+                },
+                "ad": {"TIE": "TIE", "NEG": "NEG"},
+                "tip": {"TIE": "YAT", "NEG": "YAT"},
+            }
+
+            module.html_uret(cfg, cache)
+            rendered = output.read_text(encoding="utf-8")
+            raw = json.loads(re.search(r"const RAW = (\{.*?\});", rendered).group(1))
+
+            self.assertEqual(raw["f"]["TIE"][-1], 4)
+            self.assertEqual(raw["f"]["NEG"][-1], -3)
+
     def test_external_fund_name_cannot_close_script_context(self):
         module = load_module()
         payload = {"name": "</script><script>window.auditXss=1</script>"}

@@ -39,16 +39,22 @@ class AtomicJsonTests(unittest.TestCase):
                 self.assertEqual(list(Path(tmp).glob("*.tmp")), [])
 
     def test_failed_atomic_write_keeps_previous_cache(self):
-        module = self.selected
-        with tempfile.TemporaryDirectory() as tmp:
-            target = Path(tmp) / "cache.json"
-            target.write_text('{"old":true}', encoding="utf-8")
-            with patch.object(module.os, "replace", side_effect=OSError("disk failure")):
-                with self.assertRaises(OSError):
-                    module.atomic_json_dump(str(target), {"new": True})
+        """A: `atomic_json_dump` doğrudan yazıma indirgenirse (tmp+`os.replace`
+        yerine hedefe direkt yazım) yarım/başarısız bir yazım önceki içeriği
+        bozar. `os.replace` başarısız olacak şekilde `mock.patch` edilir; gerçek
+        atomik uygulamada hedef dosya hiç dokunulmamış halde kalmalı ve `.tmp`
+        artığı bırakılmamalı. Hem grup (`tefas_akis`) hem seçili (`tefas_secili`)
+        üreticisi için eşlenik doğrulama."""
+        for module in (self.group, self.selected):
+            with self.subTest(module=module.__name__), tempfile.TemporaryDirectory() as tmp:
+                target = Path(tmp) / "cache.json"
+                target.write_text('{"old":true}', encoding="utf-8")
+                with patch.object(module.os, "replace", side_effect=OSError("disk failure")):
+                    with self.assertRaises(OSError):
+                        module.atomic_json_dump(str(target), {"new": True})
 
-            self.assertEqual(json.loads(target.read_text(encoding="utf-8")), {"old": True})
-            self.assertEqual(list(Path(tmp).glob("*.tmp")), [])
+                self.assertEqual(json.loads(target.read_text(encoding="utf-8")), {"old": True})
+                self.assertEqual(list(Path(tmp).glob("*.tmp")), [])
 
 
 class SendClaimTests(unittest.TestCase):
