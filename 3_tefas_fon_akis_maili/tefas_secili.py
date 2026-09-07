@@ -285,6 +285,19 @@ def fetch(fon_tipi, bas, bit, deneme=3):
             time.sleep(20)
 
 
+def gecerli_gozlem(kayit):
+    """TEFAS kaydı geçerli bir gözlem mi?
+
+    Bozuk bir fetch bazen tedavüldeki pay sayısını (tedPaySayisi) ve fiyatı
+    0 döndürüyor; pay×fiyat=0 matematiksel olarak geçerli bir 0 akış gibi
+    görünüp fail-closed kontrollerini atlatıyor, "Hesaplandı" etiketiyle 0 TL
+    yayınlanıyordu. tedPaySayisi<=0 veya fiyat<=0 olan kayıt gözlem SAYILMAZ
+    — veri boşluğu olarak ele alınır.
+    """
+    pay, fiyat = kayit
+    return pay is not None and fiyat is not None and pay > 0 and fiyat > 0
+
+
 def topla(cfg, bas, bit, adlar, tipler, pencere_bitti=None):
     """[bas, bit] için ({kod: {tarih: (pay, fiyat)}}, kapsam) döndürür.
 
@@ -298,7 +311,7 @@ def topla(cfg, bas, bit, adlar, tipler, pencere_bitti=None):
             for x in fetch(tip, pencere_bas, pencere_bit):
                 if not kapsamda(x["fonKodu"], x["fonUnvan"], tip):
                     continue
-                if x["fiyat"] is None or x["tedPaySayisi"] is None:
+                if not gecerli_gozlem((x["tedPaySayisi"], x["fiyat"])):
                     continue
                 veri[x["fonKodu"]][x["tarih"]] = (x["tedPaySayisi"], x["fiyat"])
                 adlar[x["fonKodu"]] = x["fonUnvan"]
@@ -363,6 +376,13 @@ def akis_serisi(onbellek):
 
     Bir fon evrenin bir önceki gerçek veri tarihinde gözlem vermediyse değer
     üretilmez. Böylece haftalar süren değişim tek bir güne yazılmaz.
+
+    Önbellekte zaten birikmiş bozuk kayıtlar da olabilir (ör. [0, 0]) —
+    `gecerli_gozlem` burada seriyi okurken de uygulanır: geçersiz kayıt o
+    fon için o tarihte gözlem yokmuş gibi ele alınır, tarih 'bosluklar'a
+    'invalid_observation' nedeniyle girer ve ilk-gözlem (piyasaya çıkış)
+    istisnasını tetiklemez (istisna yalnız fonun HAM serideki en eski
+    tarihinde, o kayıt geçerliyse uygulanır).
     """
     fonlar = onbellek["fon"]
     tarihler = sorted({t for s in fonlar.values() for t in s})
@@ -370,14 +390,29 @@ def akis_serisi(onbellek):
     bosluklar = {}
     onceki_rapor = {t: tarihler[i - 1] for i, t in enumerate(tarihler) if i}
     for kod, seri in fonlar.items():
-        fon_tarihleri = sorted(seri)
-        onceki_mevcut = {t: fon_tarihleri[i - 1] for i, t in enumerate(fon_tarihleri) if i}
-        for t in fon_tarihleri:
+        ham_tarihler = sorted(seri)
+        ilk_ham_tarih = ham_tarihler[0]
+        gecerli_tarihler = [t for t in ham_tarihler if gecerli_gozlem(seri[t])]
+        gecerli = {t: seri[t] for t in gecerli_tarihler}
+        onceki_mevcut = {t: gecerli_tarihler[i - 1] for i, t in enumerate(gecerli_tarihler) if i}
+        son_gecerli = None
+        for t in ham_tarihler:
+            if t in gecerli:
+                son_gecerli = t
+                continue
+            beklenen = onceki_rapor.get(t)
+            bosluklar.setdefault(t, {})[kod] = {
+                "reason": "invalid_observation",
+                "expected_previous": beklenen,
+                "previous_available": son_gecerli,
+            }
+            akis.setdefault(t, {})
+        for t in gecerli_tarihler:
             beklenen = onceki_rapor.get(t)
             if beklenen is None:
                 continue
-            if beklenen not in seri:
-                if t == fon_tarihleri[0]:
+            if beklenen not in gecerli:
+                if t == ilk_ham_tarih:
                     continue  # fonun ilk gözlemi (piyasaya çıkış) gap değildir
                 bosluklar.setdefault(t, {})[kod] = {
                     "expected_previous": beklenen,
@@ -385,7 +420,7 @@ def akis_serisi(onbellek):
                 }
                 akis.setdefault(t, {})
                 continue
-            akis.setdefault(t, {})[kod] = (seri[t][0] - seri[beklenen][0]) * seri[t][1]
+            akis.setdefault(t, {})[kod] = (gecerli[t][0] - gecerli[beklenen][0]) * gecerli[t][1]
     gunler = [t for t in tarihler if t >= BAS_TARIH.isoformat()]
     return akis, gunler, tarihler, bosluklar
 

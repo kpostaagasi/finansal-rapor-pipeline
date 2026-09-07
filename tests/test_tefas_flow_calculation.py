@@ -48,6 +48,47 @@ class FundFlowCalculationTests(unittest.TestCase):
         )
         self.assertNotIn("2026-04-28", flows)
 
+    def test_selected_fund_zero_pay_and_price_record_is_not_published_as_zero_flow(self):
+        """Bozuk TEFAS kaydı ([0, 0]) gözlem sayılmaz; akış hesaplanmaz.
+
+        Eski davranışta (0 - önceki_pay) * 0 == 0 sessizce yayınlanıyordu —
+        gerçek 0 akış ile "veri boşluğu"nu ayırt edemiyordu.
+        """
+        cache = {
+            "fon": {
+                "PRY": {
+                    "2026-09-03": [1_000_000, 10.0],
+                    "2026-09-04": [0, 0],
+                    "2026-09-05": [1_000_000, 10.0],
+                },
+            }
+        }
+
+        flows, _, _, gaps = self.selected.akis_serisi(cache)
+
+        self.assertNotIn("PRY", flows.get("2026-09-04", {}))
+        self.assertEqual(gaps["2026-09-04"]["PRY"]["reason"], "invalid_observation")
+        self.assertEqual(gaps["2026-09-04"]["PRY"]["previous_available"], "2026-09-03")
+        # Bozuk günün etrafındaki geçiş de hesaplanamaz (önceki geçerli gözlem
+        # 09-04 değil 09-03; beklenen önceki TEFAS tarihi 09-04'te yok).
+        self.assertNotIn("PRY", flows.get("2026-09-05", {}))
+
+    def test_selected_fund_flow_unchanged_for_valid_consecutive_observations(self):
+        """Kör filtreleme regresyonu: geçerli pozitif kayıtlarda hesap değişmez."""
+        cache = {
+            "fon": {
+                "ABC": {
+                    "2026-09-03": [1000, 10.0],
+                    "2026-09-04": [1050, 10.5],
+                },
+            }
+        }
+
+        flows, _, _, gaps = self.selected.akis_serisi(cache)
+
+        self.assertEqual(flows["2026-09-04"]["ABC"], (1050 - 1000) * 10.5)
+        self.assertEqual(gaps, {})
+
     def test_group_flow_is_unavailable_when_fund_misses_previous_report_date(self):
         funds = {
             "PDR": {

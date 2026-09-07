@@ -117,6 +117,19 @@ def fetch(fon_tipi, bas, bit, deneme=3):
             time.sleep(20)
 
 
+def gecerli_gozlem(kayit):
+    """TEFAS kaydı geçerli bir gözlem mi?
+
+    Bozuk bir fetch bazen tedavüldeki pay sayısını (tedPaySayisi) ve fiyatı
+    0 döndürüyor; pay×fiyat=0 matematiksel olarak geçerli bir 0 akış gibi
+    görünüp fail-closed kontrollerini atlatıyor, "Hesaplandı" etiketiyle 0 TL
+    yayınlanıyordu. tedPaySayisi<=0 veya fiyat<=0 olan kayıt gözlem SAYILMAZ
+    — veri boşluğu olarak ele alınır.
+    """
+    pay, fiyat = kayit
+    return pay is not None and fiyat is not None and pay > 0 and fiyat > 0
+
+
 def topla(bas, bit, adlar=None):
     """[bas, bit] aralığı için fon bazında {kod: {tarih: (pay, fiyat)}} döndürür."""
     yf, eyf = defaultdict(dict), defaultdict(dict)
@@ -130,7 +143,7 @@ def topla(bas, bit, adlar=None):
                     continue
                 if tip == "EMK" and x["fonKodu"] not in eyf_kod:
                     continue
-                if x["fiyat"] is None or x["tedPaySayisi"] is None:
+                if not gecerli_gozlem((x["tedPaySayisi"], x["fiyat"])):
                     continue
                 hedef[x["fonKodu"]][x["tarih"]] = (x["tedPaySayisi"], x["fiyat"])
                 if adlar is not None:
@@ -163,23 +176,33 @@ def akislari_hesapla(fonlar, tarihler):
 
     Önceki veya güncel tarihte eksik fon varsa kısmi toplam doğruymuş gibi
     gösterilmez; o tarih için toplam ``None`` olur.
+
+    Bozuk TEFAS kaydı (bkz. gecerli_gozlem — tedPaySayisi<=0 veya fiyat<=0)
+    gözlem sayılmaz: seri bu fonksiyonda okunurken elenir, o fon o tarihte
+    hiç gözlem vermemiş gibi ele alınır (veri boşluğu).
     """
     toplam: dict[str, float | None] = {t: 0.0 for t in tarihler}
     sayim = {t: 0 for t in tarihler}
     sorun = {t: {"missing_current": [], "missing_previous": []} for t in tarihler}
+    gecerli = {
+        kod: {t: v for t, v in seri.items() if gecerli_gozlem(v)}
+        for kod, seri in fonlar.items()
+    }
     for t in tarihler:
-        sayim[t] = sum(t in seri for seri in fonlar.values())
+        sayim[t] = sum(t in seri for seri in gecerli.values())
     for onceki, t in zip(tarihler, tarihler[1:]):
-        onceki_kodlar = {kod for kod, seri in fonlar.items() if onceki in seri}
-        guncel_kodlar = {kod for kod, seri in fonlar.items() if t in seri}
+        onceki_kodlar = {kod for kod, seri in gecerli.items() if onceki in seri}
+        guncel_kodlar = {kod for kod, seri in gecerli.items() if t in seri}
         sorun[t]["missing_current"] = sorted(onceki_kodlar - guncel_kodlar)
         sorun[t]["missing_previous"] = sorted(guncel_kodlar - onceki_kodlar)
         for kod in onceki_kodlar & guncel_kodlar:
-            pay, fiyat = fonlar[kod][t]
-            toplam[t] = (toplam[t] or 0.0) + (pay - fonlar[kod][onceki][0]) * fiyat
+            pay, fiyat = gecerli[kod][t]
+            toplam[t] = (toplam[t] or 0.0) + (pay - gecerli[kod][onceki][0]) * fiyat
         # İlk kez gözlemlenen fon (piyasaya çıkış) akış boşluğu DEĞİLDİR; akışı
         # hesaplanamaz ama o günün toplamını iptal etmez. metadata'da görünmeye
-        # devam eder; html_uret launch_only ile recent_gap'e saymaz.
+        # devam eder; html_uret launch_only ile recent_gap'e saymaz. HAM (bkz.
+        # fonlar, filtrelenmemiş) min tarih kullanılır: fonun daha eski bozuk
+        # bir kaydı varsa bu gerçek bir çıkış değildir, kopukluk sayılır.
         kopuklar = [kod for kod in (guncel_kodlar - onceki_kodlar)
                     if min(fonlar[kod]) != t]
         if sorun[t]["missing_current"] or kopuklar:
