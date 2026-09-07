@@ -231,31 +231,6 @@ def _validate_market_artifact(value: Mapping[str, Any], data: Mapping[str, Any])
     if source_run.tzinfo is None:
         raise ReportContractError("metadata.last_successful_run saat dilimi içermeli")
 
-    # Hazine eğrisi UI'dan çıkarıldı (research_reports_view._render_treasury
-    # kaldırıldı); sözleşmede de artık opsiyonel — görünmeyen Hazine verisi
-    # görünen emtia sekmesinin durumunu bayatlatmamalı (F6). Varsa tip ve
-    # tutarlılık kontrol edilir, yoksa sessizce geçilir.
-    treasury_expected = meta.get("treasury_expected_count")
-    treasury_found = meta.get("treasury_found_count")
-    for treasury_key, treasury_value in (
-        ("treasury_expected_count", treasury_expected),
-        ("treasury_found_count", treasury_found),
-    ):
-        if treasury_value is None:
-            continue
-        if (
-            isinstance(treasury_value, bool)
-            or not isinstance(treasury_value, int)
-            or treasury_value < 0
-        ):
-            raise ReportContractError(f"metadata.{treasury_key} geçersiz")
-    if (
-        treasury_expected is not None
-        and treasury_found is not None
-        and treasury_found > treasury_expected
-    ):
-        raise ReportContractError("metadata Hazine kapsam sayıları geçersiz")
-
     metadata_excluded = meta.get("excluded_stale_quotes")
     if not isinstance(metadata_excluded, list):
         raise ReportContractError("metadata.excluded_stale_quotes liste olmalı")
@@ -384,22 +359,6 @@ def _validate_market_artifact(value: Mapping[str, Any], data: Mapping[str, Any])
     if overlap:
         raise ReportContractError("filtrelenen sembol eğriye dahil edilmiş: " + ", ".join(sorted(overlap)))
 
-    # Hazine eğrisi UI'dan çıkarıldı; data.rates de sözleşmede opsiyonel (F6).
-    rates_value = data.get("rates")
-    if rates_value is not None:
-        rates = _require_mapping(rates_value, "data.rates")
-        rate_points = rates.get("points")
-        if not isinstance(rate_points, list):
-            raise ReportContractError("data.rates.points liste olmalı")
-        if treasury_found is not None and treasury_found != len(rate_points):
-            raise ReportContractError("Hazine kapsamı points ile uyuşmuyor")
-        for point_index, point_value in enumerate(rate_points):
-            point = _require_mapping(point_value, f"data.rates.points[{point_index}]")
-            _require_text(point.get("label"), f"data.rates.points[{point_index}].label")
-            _validate_numeric_series(
-                [point.get("value")], 1, f"data.rates.points[{point_index}].value"
-            )
-
 
 def validate_artifact(value: Any, expected_type: str) -> dict[str, Any]:
     """Tek bir artifactin üst ve rapora özgü iç sözleşmesini doğrular."""
@@ -453,8 +412,10 @@ def _fetch_bytes(url: str) -> bytes:
     request = urllib.request.Request(
         url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
     )
+    # Art arda üç istek eskiden spinner'sız 90 saniyeye kadar bloklanıyordu
+    # (30 sn × 3); zaman aşımı burada 10 saniyeye düşürüldü (Contract 8).
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with urllib.request.urlopen(request, timeout=10) as response:
             return response.read()
     except Exception as exc:
         raise ReportContractError(f"uzak artifact çekilemedi ({url}): {exc}") from exc

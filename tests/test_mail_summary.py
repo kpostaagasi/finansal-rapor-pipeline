@@ -83,5 +83,29 @@ class GroupSummaryTests(unittest.TestCase):
         self.assertTrue(ozet.startswith("6/8 grup · 02.09.2026"))
 
 
+class FmtTlFormattingTests(unittest.TestCase):
+    """fmt_tl: pano `_money` ile birebir aynı Türkçe biçim (binlik `.`, ondalık `,`, 0 işaretsiz)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.module = load_module()
+
+    def test_fmt_tl_matches_dashboard_money_reference_values(self):
+        """Pano `_money`'nin ürettiği biçimle birebir eşleşen referans değerler.
+        Regresyon: nokta ondalığa dönüş (ör. "+1.23 mlr TL") ya da 0 için
+        işaretli "+0 TL" bu değerlerden en az birini kırar."""
+        vakalar = [
+            (1234567890, "+1,23 mlr TL"),
+            (1234567, "+1,2 mn TL"),
+            (-987654321, "−987,7 mn TL"),
+            (-999, "−999 TL"),
+            (0, "0 TL"),
+            (12345, "+12.345 TL"),
+        ]
+        for deger, beklenen in vakalar:
+            with self.subTest(deger=deger):
+                self.assertEqual(self.module.fmt_tl(deger), beklenen)
+
+
 if __name__ == "__main__":
     unittest.main()

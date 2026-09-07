@@ -21,7 +21,7 @@ COMMODITIES = [
     {"key":"altin",    "title":"Altın",             "unit":"$/ons",   "root":"GC",  "suffix":"CMX", "cycle":[2,4,6,8,10,12],   "count":8,  "dec":1},
     {"key":"gumus",    "title":"Gümüş",             "unit":"$/ons",   "root":"SI",  "suffix":"CMX", "cycle":[3,5,7,9,12],      "count":7,  "dec":2},
     {"key":"platin",   "title":"Platin",            "unit":"$/ons",   "root":"PL",  "suffix":"NYM", "cycle":[1,4,7,10],        "count":6,  "dec":1},
-    {"key":"bakir",    "title":"Bakır",             "unit":"$/lb",    "root":"HG",  "suffix":"CMX", "cycle":[3,5,7,9,12],      "count":7,  "dec":3},
+    {"key":"bakir",    "title":"Bakır",             "unit":"$/libre", "root":"HG",  "suffix":"CMX", "cycle":[3,5,7,9,12],      "count":7,  "dec":3},
     {"key":"aluminyum","title":"Alüminyum",         "unit":"$/ton",   "root":"ALI", "suffix":"CMX", "cycle":list(range(1,13)), "count":10, "dec":2},
 ]
 

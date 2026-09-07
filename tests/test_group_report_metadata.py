@@ -1,3 +1,4 @@
+import datetime as dt
 import importlib.util
 import json
 import re
@@ -96,6 +97,42 @@ class GroupReportMetadataTests(unittest.TestCase):
             self.assertEqual(meta["found_count"], 63)
             self.assertEqual(meta["missing"], ["AAA"])
             self.assertEqual(meta["uncomputed_count"], 1)
+
+    def test_recent_gap_count_includes_ninety_days_back_excludes_ninety_one(self):
+        """`recent_gap_count` penceresi tam 90 gün: kesim gününde (tam 90 gün
+        önce) bir boşluk sayılır, bir gün daha eski (91 gün önce) sayılmaz.
+        Pencere yanlışlıkla 89'a gerilerse ikisi de pencere dışına düşer ve bu
+        test kırılır — 89 -> 90 regresyonunu kilitler."""
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            template = root / "template.html"
+            output = root / "report.html"
+            template.write_text(
+                "const REPORT_META = __REPORT_META__; const RAW = __RAW__; "
+                "__YF_N__ __EYF_N__ __YF0_N__ __EYF0_N__ __ILK_TARIH__",
+                encoding="utf-8",
+            )
+            module.TEMPLATE = str(template)
+            module.OUT = str(output)
+            module.DESKTOP_COPY = str(root / "desktop.html")
+
+            son = dt.date.today() - dt.timedelta(days=3)
+            gun_90 = (son - dt.timedelta(days=90)).isoformat()
+            gun_91 = (son - dt.timedelta(days=91)).isoformat()
+            son_iso = son.isoformat()
+            cache = {
+                "d": [gun_91, gun_90, son_iso],
+                "yf": [None, None, 100], "eyf": [10, 10, 10],
+                "yf_missing": {gun_91: ["AAA"], gun_90: ["AAA"]},
+                "eyf_missing": {},
+            }
+
+            module.html_uret(cache)
+            rendered = output.read_text(encoding="utf-8")
+            meta = json.loads(re.search(r"const REPORT_META = (\{.*?\});", rendered).group(1))
+
+            self.assertEqual(meta["recent_gap_count"], 1)
 
     def test_production_template_embeds_report_metadata(self):
         template = (MODULE_PATH.parent / "tefas_template.html").read_text(encoding="utf-8")

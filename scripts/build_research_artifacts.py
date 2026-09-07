@@ -161,8 +161,15 @@ def build_market_artifact(
     # Hazine eğrisi UI'dan çıkarıldı ve sözleşmede opsiyonel (F6): görünmeyen
     # Hazine kapsamı artık status'ü partial'a düşürmüyor. Emtia eğrilerinin
     # kendi kapsamı (classify_metadata) status'ü belirlemeye devam ediyor.
-    clean_data = dict(data)
-    clean_data.pop("report_meta", None)
+    # `data`/`meta` toptan değil, açık alan listesiyle kopyalanır: üretici
+    # HTML'i `report_meta`/`rates`/`treasury_*` taşımaya devam etse bile
+    # (mail raporu için) bunlar artifacte sızmaz (karar: Hazine çıkarıldı).
+    clean_data = {key: data[key] for key in ("curves", "generated", "warnings")}
+    clean_meta = {
+        key: value
+        for key, value in meta.items()
+        if key not in ("treasury_expected_count", "treasury_found_count")
+    }
     artifact = {
         "schema_version": SCHEMA_VERSION,
         "report_type": "commodities_treasury",
@@ -175,9 +182,8 @@ def build_market_artifact(
                 "Yahoo Finance son erişilebilir piyasa fiyatıdır; resmî settlement değildir."
             ),
             "liquidity_filter": "Beş günden eski futures fiyatları eğri analizine alınmaz.",
-            "treasury_source": "ABD Hazinesi günlük getiri eğrisi CSV'si.",
         },
-        "metadata": meta,
+        "metadata": clean_meta,
         "data": clean_data,
     }
     return validate_artifact(artifact, "commodities_treasury")

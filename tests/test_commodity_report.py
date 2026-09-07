@@ -61,6 +61,12 @@ class CommodityReportTests(unittest.TestCase):
         )
         self.assertEqual(aluminum["count"], 10)
 
+    def test_copper_unit_uses_turkish_libre_not_english_abbreviation(self):
+        """Diğer emtia birimleri Türkçe ($/varil, $/ons, $/ton); bakır İngilizce
+        "$/lb" kısaltmasıyla tutarsızdı. "$/libre" ile hizalanmalı."""
+        bakir = next(item for item in self.module.COMMODITIES if item["key"] == "bakir")
+        self.assertEqual(bakir["unit"], "$/libre")
+
     def test_build_data_records_requested_found_and_missing_contracts(self):
         commodity = {
             "key": "test",

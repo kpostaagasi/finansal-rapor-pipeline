@@ -195,12 +195,21 @@ def publish_dashboard(cfg, failures=None):
 
 
 def fmt_tl(v):
-    a, isaret = abs(v), "−" if v < 0 else "+"
-    if a >= 1e9:
-        return f"{isaret}{a/1e9:,.2f} mlr TL".replace(",", ".")
-    if a >= 1e6:
-        return f"{isaret}{a/1e6:,.1f} mn TL".replace(",", ".")
-    return f"{isaret}{a:,.0f} TL".replace(",", ".")
+    """Pano `_money` ile birebir aynı Türkçe biçim: binlik `.`, ondalık `,`; 0 işaretsiz.
+
+    Eşik kontrolü YUVARLANMIŞ değere göre yapılır (`_money` ile aynı gerekçe):
+    aksi halde ör. 999.950.000 "mn" dalında 1000,0'a yuvarlanıp dört haneli,
+    "mlr" sınırını görsel olarak aşan bir sonuç üretir.
+    """
+    a = abs(v)
+    isaret = "+" if v > 0 else "−" if v < 0 else ""
+    if a >= 1_000_000_000 or round(a / 1_000_000, 1) >= 1000:
+        text = f"{a / 1_000_000_000:.2f} mlr TL"
+    elif a >= 1_000_000:
+        text = f"{a / 1_000_000:.1f} mn TL"
+    else:
+        text = f"{a:,.0f} TL"
+    return isaret + text.replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 REPORT_META_RE = re.compile(r"const\s+REPORT_META\s*=\s*(\{.*?\})\s*;", re.DOTALL)

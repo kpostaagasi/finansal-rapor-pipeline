@@ -10,6 +10,7 @@
              null bırakılır: kısmi toplam tam sonuç gibi gösterilmez.
 """
 
+import datetime as dt
 import importlib.util
 import json
 import os
@@ -692,6 +693,69 @@ class ReportConfigTests(unittest.TestCase):
         self.assertEqual(ortak["PAR-TUM"], {"PAR-YAT": 1, "PAR-EMK": 1})
         self.assertEqual(ortak["PAR-YAT"], {"PAR-TUM": 1})
         self.assertEqual(ortak["PAR-EMK"], {"PAR-TUM": 1})
+
+
+class RecentGapWindowTests(unittest.TestCase):
+    """`kapsam_durumu`/`toplam_satirlari`'nin yakın-boşluk penceresi tam 90 gün
+    olmalı (YAKIN_PENCERE_GUN). `akis_serisi`'yi taklit ederek pencere sınırını
+    gerçek TEFAS akış hesabından izole test eder; boşluk üretiminin kendisi
+    test_tefas_flow_calculation.py'de ayrıca kilitli."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.module = load_module()
+
+    def _pencere_tarihleri(self):
+        """(son, 90 gün önce, 91 gün önce) — hepsi 'bugün'e göreli, tarihe bağımlı değil."""
+        son = dt.date.today() - dt.timedelta(days=3)
+        return son, son - dt.timedelta(days=90), son - dt.timedelta(days=91)
+
+    def _sahte_akis_serisi(self, son_iso, gun_90_iso, gun_91_iso):
+        def akis_serisi(_onbellek):
+            gunler = [gun_91_iso, gun_90_iso, son_iso]
+            bosluklar = {
+                gun_91_iso: {"AAA": {"expected_previous": None, "previous_available": None}},
+                gun_90_iso: {"AAA": {"expected_previous": None, "previous_available": None}},
+            }
+            return {}, gunler, gunler, bosluklar
+        return akis_serisi
+
+    def test_kapsam_durumu_counts_gap_ninety_days_back_excludes_ninety_one(self):
+        son, gun_90, gun_91 = self._pencere_tarihleri()
+        son_iso, gun_90_iso, gun_91_iso = son.isoformat(), gun_90.isoformat(), gun_91.isoformat()
+        onbellek = {
+            "fon": {"AAA": {son_iso: [100, 1.0]}},
+            "ad": {"AAA": "A FONU"},
+            "tip": {"AAA": "YAT"},
+        }
+        cfg = {"kapsam": {"tip": "tur"}}
+        with patch.object(
+            self.module, "akis_serisi", self._sahte_akis_serisi(son_iso, gun_90_iso, gun_91_iso)
+        ):
+            durum = self.module.kapsam_durumu(cfg, onbellek)
+        self.assertEqual(durum["recent_gap_count"], 1)
+
+    def test_group_total_recent_gap_counts_ninety_days_back_excludes_ninety_one(self):
+        son, gun_90, gun_91 = self._pencere_tarihleri()
+        son_iso, gun_90_iso, gun_91_iso = son.isoformat(), gun_90.isoformat(), gun_91.isoformat()
+        cfg = {
+            "ad": "gruplar",
+            "kapsam": {"tip": "toplam",
+                       "kaynaklar": [{"kod": "TST", "grup": "Test grubu", "rapor": "test"}]},
+        }
+        alt = {"cache": "/tmp/olmayan.json", "fon_tipleri": []}
+        with (
+            patch.object(self.module, "rapor_yukle", return_value=alt),
+            patch.object(self.module.os.path, "exists", return_value=True),
+            patch("builtins.open", mock_open(read_data=json.dumps({}))),
+            patch.object(
+                self.module, "akis_serisi",
+                self._sahte_akis_serisi(son_iso, gun_90_iso, gun_91_iso),
+            ),
+        ):
+            _, bosluk, yakin, _ = self.module.toplam_satirlari(cfg)
+        self.assertEqual(bosluk, 2)   # pencere dışı da dahil, iki (kod, tarih) boşluğu
+        self.assertEqual(yakin, 1)    # yalnız 90 gün önceki
 
 
 if __name__ == "__main__":

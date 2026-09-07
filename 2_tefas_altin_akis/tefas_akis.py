@@ -41,6 +41,7 @@ DESKTOP_COPY = os.path.expanduser("~/Documents/TEFAS_Net_Akis_Grafik.html")
 BAS_TARIH = dt.date(2024, 12, 26)   # serinin başlangıcı (ilk gün akış için referans, seriye girmez)
 PENCERE = 25                        # gün; TEFAS sınırı 28
 INCREMENTAL_GUN = 12                # her gün yeniden hesaplanan kuyruk
+YAKIN_PENCERE_GUN = 90              # "son 90 gün" penceresi: panonun gap_periods varsayılanıyla aynı
 
 API = "https://www.tefas.gov.tr/api/funds/fonGnlBlgSiraliGetir"
 HEADERS = {
@@ -320,7 +321,8 @@ def html_uret(onbellek):
     eyf_hesaplanan = onbellek.get("eyf_calc_n", {}).get(son, eyf_son)
     hesaplanan = (yf_hesaplanan + eyf_hesaplanan
                   if isinstance(yf_hesaplanan, int) and isinstance(eyf_hesaplanan, int) else None)
-    kesim = dt.date.fromisoformat(son) - dt.timedelta(days=89)
+    # Yakın pencere: son veri gününden YAKIN_PENCERE_GUN (90) gün geriye — dahil.
+    kesim = dt.date.fromisoformat(son) - dt.timedelta(days=YAKIN_PENCERE_GUN)
     yakin_eksik_gun = 0
     ilk_yf = onbellek.get("yf_ilk", {})
     ilk_eyf = onbellek.get("eyf_ilk", {})

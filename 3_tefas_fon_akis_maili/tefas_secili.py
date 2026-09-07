@@ -39,6 +39,7 @@ REF_TARIH = dt.date(2024, 12, 30)   # referans gün (akışa girmez)
 BAS_TARIH = dt.date(2024, 12, 31)   # serinin ilk akış günü
 PENCERE = 25                        # gün; TEFAS sınırı 28
 INCREMENTAL_GUN = 12                # her çalışmada yeniden çekilen kuyruk
+YAKIN_PENCERE_GUN = 90              # "son 90 gün" penceresi: panonun gap_periods varsayılanıyla aynı
 
 API = "https://www.tefas.gov.tr/api/funds/fonGnlBlgSiraliGetir"
 API_LISTE = "https://www.tefas.gov.tr/api/funds/fonYonetimBazliBilgiGetir"
@@ -464,7 +465,8 @@ def kapsam_durumu(cfg, onbellek):
             t: {k: v for k, v in kodlar.items() if k in beklenen}
             for t, kodlar in bosluklar.items()
         }
-    kesim = (dt.date.fromisoformat(son) - dt.timedelta(days=89)).isoformat()
+    # Yakın pencere: son veri gününden YAKIN_PENCERE_GUN (90) gün geriye — dahil.
+    kesim = (dt.date.fromisoformat(son) - dt.timedelta(days=YAKIN_PENCERE_GUN)).isoformat()
     yakin_bosluk_n = sum(
         len(kodlar) for tarih, kodlar in bosluklar.items() if tarih >= kesim
     )
@@ -639,7 +641,8 @@ def toplam_satirlari(cfg):
         for t, kodlar in bosluklar.items():
             bosluk_gunler.update((k, t) for k in kodlar)
         if gunler:
-            kesim = (dt.date.fromisoformat(gunler[-1]) - dt.timedelta(days=89)).isoformat()
+            # Yakın pencere: kaynağın son veri gününden YAKIN_PENCERE_GUN (90) gün geriye — dahil.
+            kesim = (dt.date.fromisoformat(gunler[-1]) - dt.timedelta(days=YAKIN_PENCERE_GUN)).isoformat()
             for t, kodlar in bosluklar.items():
                 if t >= kesim:
                     yakin_bosluk_gunler.update((k, t) for k in kodlar)
