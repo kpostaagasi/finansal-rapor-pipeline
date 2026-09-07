@@ -178,6 +178,56 @@ class IncrementalUpdateWindowTests(unittest.TestCase):
             )
 
 
+class YerelKopyaTests(unittest.TestCase):
+    """`~/Documents` kopyası opt-in: bayrak yoksa yerel kopya YAZILMAZ.
+
+    Rapor zaten repo içine, `site/`'a ve panoya gidiyor; her koşuda Documents
+    kökünü sessizce doldurması istenmiyordu.
+    """
+
+    def _kosum(self, yerel_kopya):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            template = root / "template.html"
+            output = root / "report.html"
+            desktop = root / "desktop.html"
+            template.write_text(
+                "const REPORT_META = __REPORT_META__; const RAW = __RAW__; "
+                "__YF_N__ __EYF_N__ __YF0_N__ __EYF0_N__ __ILK_TARIH__",
+                encoding="utf-8",
+            )
+            module.TEMPLATE = str(template)
+            module.OUT = str(output)
+            module.DESKTOP_COPY = str(desktop)
+            module.YEREL_KOPYA = yerel_kopya
+            module.html_uret({
+                "d": ["2026-08-14", "2026-08-17"],
+                "yf": [100, 200],
+                "eyf": [10, 20],
+                "yf_n": {"2026-08-17": 48},
+                "eyf_n": {"2026-08-17": 16},
+                "yf_expected_n": {"2026-08-17": 48},
+                "eyf_expected_n": {"2026-08-17": 16},
+                "yf_calc_n": {"2026-08-17": 48},
+                "eyf_calc_n": {"2026-08-17": 16},
+                "yf_missing": {"2026-08-17": []},
+                "eyf_missing": {"2026-08-17": []},
+            })
+            return output.exists(), desktop.exists()
+
+    def test_default_run_writes_only_the_repo_output(self):
+        repo, yerel = self._kosum(yerel_kopya=False)
+
+        self.assertTrue(repo)
+        self.assertFalse(yerel)
+
+    def test_flag_enables_the_local_documents_copy(self):
+        repo, yerel = self._kosum(yerel_kopya=True)
+
+        self.assertTrue(repo)
+        self.assertTrue(yerel)
+
 
 if __name__ == "__main__":
     unittest.main()

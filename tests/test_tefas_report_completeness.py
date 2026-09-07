@@ -212,6 +212,53 @@ class TefasReportCompletenessTests(unittest.TestCase):
         self.assertNotIn("</script>", encoded.lower())
         self.assertEqual(json.loads(encoded), payload)
 
+    def _yerel_kopya_kosumu(self, yerel_kopya):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "fonlar.json").write_text(
+                json.dumps({"fonlar": ["PHE"]}), encoding="utf-8"
+            )
+            template = root / "template.html"
+            template.write_text(
+                "__BASLIK__|__FON_N__/__ISTENEN_N__|__EKSIK_NOT__|__ILK_TARIH__|"
+                "__SON_TARIH__|const REPORT_META = __REPORT_META__;|__RAW__",
+                encoding="utf-8",
+            )
+            output = root / "report.html"
+            desktop = root / "desktop.html"
+            module.HERE = str(root)
+            module.TEMPLATE = str(template)
+            module.YEREL_KOPYA = yerel_kopya
+            module.html_uret(
+                {
+                    "baslik": "Seçili Fonlar",
+                    "kapsam": {"tip": "liste", "dosya": "fonlar.json"},
+                    "html": str(output),
+                    "desktop": str(desktop),
+                },
+                {
+                    "fon": {"PHE": {"2024-12-30": [100, 1], "2024-12-31": [110, 1]}},
+                    "ad": {"PHE": "Pusula Portföy Hisse Senedi Fonu"},
+                    "tip": {"PHE": "YAT"},
+                },
+            )
+            return output.exists(), desktop.exists()
+
+    def test_default_run_does_not_write_the_local_documents_copy(self):
+        """`~/Documents` kopyası opt-in; bayrak yoksa yalnız repo çıktısı yazılır."""
+        repo, yerel = self._yerel_kopya_kosumu(yerel_kopya=False)
+
+        self.assertTrue(repo)
+        self.assertFalse(yerel)
+
+    def test_flag_enables_the_local_documents_copy(self):
+        """Bayrakla eski davranış (iki hedefe yazım) aynen geri gelir."""
+        repo, yerel = self._yerel_kopya_kosumu(yerel_kopya=True)
+
+        self.assertTrue(repo)
+        self.assertTrue(yerel)
+
 
 if __name__ == "__main__":
     unittest.main()

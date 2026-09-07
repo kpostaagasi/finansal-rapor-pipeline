@@ -113,10 +113,17 @@ kalmasın diye).
 env -u PYTHONPATH .venv/bin/python 2_tefas_altin_akis/tefas_akis.py --bootstrap
 env -u PYTHONPATH .venv/bin/python 2_tefas_altin_akis/tefas_akis.py
 env -u PYTHONPATH .venv/bin/python 2_tefas_altin_akis/tefas_akis.py --no-fetch
+env -u PYTHONPATH .venv/bin/python 2_tefas_altin_akis/tefas_akis.py --yerel-kopya
 ```
 
-Çıktı: `tefas_net_akis.html` + `~/Documents/TEFAS_Altin_Fonlari_Akis.xlsx`
-(sayfalar: Özet / Fiyat / Tedavüldeki Pay Sayısı / Net Akış).
+Çıktı: repo içindeki `tefas_net_akis.html`.
+
+**`--yerel-kopya`** (her iki TEFAS üreticisinde): raporun `~/Documents`
+altındaki yerel kopyasını ve `~/Documents/TEFAS_Altin_Fonlari_Akis.xlsx`
+çalışma kitabını (sayfalar: Özet / Fiyat / Tedavüldeki Pay Sayısı / Net Akış)
+da yazar. Varsayılan koşu `~/Documents`'a hiç dokunmaz — rapor zaten repo
+içine, `site/`'a ve panoya gidiyor; her koşuda oraya 10 dosya bırakmak
+gereksizdi.
 
 ### 3_tefas_fon_akis_maili
 

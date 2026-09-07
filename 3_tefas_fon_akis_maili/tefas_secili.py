@@ -34,6 +34,10 @@ import requests
 HERE = os.path.dirname(os.path.abspath(__file__))
 RAPOR_DIZIN = os.path.join(HERE, "raporlar")
 TEMPLATE = os.path.join(HERE, "secili_template.html")
+# cfg["desktop"] (~/Documents altındaki yerel kopya) yalnız `--yerel-kopya`
+# ile yazılır: rapor zaten repo içine, site/'a ve panoya gidiyor, her koşuda
+# Documents kökünü sessizce doldurması gereksizdi.
+YEREL_KOPYA = False
 
 REF_TARIH = dt.date(2024, 12, 30)   # referans gün (akışa girmez)
 BAS_TARIH = dt.date(2024, 12, 31)   # serinin ilk akış günü
@@ -558,7 +562,8 @@ def html_yaz(cfg, raw, report_meta, fon_ozet, eksik_not, gunler):
                 .replace("__EKSIK_NOT__", eksik_not)
                 .replace("__ILK_TARIH__", tr(gunler[0]))
                 .replace("__SON_TARIH__", tr(gunler[-1])))
-    for yol in (cfg["html"], cfg["desktop"]):
+    hedefler = [cfg["html"]] + ([cfg["desktop"]] if YEREL_KOPYA else [])
+    for yol in hedefler:
         try:
             with open(yol, "w", encoding="utf-8") as f:
                 f.write(html)
@@ -846,7 +851,9 @@ def toplam_html_uret(cfg):
 
 
 def main():
+    global YEREL_KOPYA
     argv = sys.argv[1:]
+    YEREL_KOPYA = "--yerel-kopya" in argv
     ad = "secili"
     if "--rapor" in argv:
         ad = argv[argv.index("--rapor") + 1]

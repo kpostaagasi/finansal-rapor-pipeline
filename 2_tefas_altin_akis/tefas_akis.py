@@ -37,6 +37,10 @@ EYF_LISTE = os.path.join(HERE, "eyf_fonlar.json")
 TEMPLATE = os.path.join(HERE, "tefas_template.html")
 OUT = os.path.join(HERE, "tefas_net_akis.html")
 DESKTOP_COPY = os.path.expanduser("~/Documents/TEFAS_Net_Akis_Grafik.html")
+# ~/Documents altındaki yerel kopyalar (HTML + Excel) yalnız `--yerel-kopya`
+# ile yazılır: raporlar zaten repo içine, site/'a ve panoya gidiyor, her
+# koşuda Documents kökünü sessizce doldurmaları gereksizdi.
+YEREL_KOPYA = False
 
 BAS_TARIH = dt.date(2024, 12, 26)   # serinin başlangıcı (ilk gün akış için referans, seriye girmez)
 PENCERE = 25                        # gün; TEFAS sınırı 28
@@ -398,11 +402,12 @@ def html_uret(onbellek):
                 .replace("__ILK_TARIH__", f"{g}.{a}.{y}"))
     with open(OUT, "w", encoding="utf-8") as f:
         f.write(html)
-    try:
-        with open(DESKTOP_COPY, "w", encoding="utf-8") as f:
-            f.write(html)
-    except OSError as e:
-        log(f"masaüstü kopyası yazılamadı: {e}")
+    if YEREL_KOPYA:
+        try:
+            with open(DESKTOP_COPY, "w", encoding="utf-8") as f:
+                f.write(html)
+        except OSError as e:
+            log(f"yerel kopya yazılamadı: {e}")
     return html
 
 
@@ -499,8 +504,10 @@ def excel_uret(yol=EXCEL_OUT):
 
 
 def main():
+    global YEREL_KOPYA
     no_fetch = "--no-fetch" in sys.argv
     tam = "--bootstrap" in sys.argv
+    YEREL_KOPYA = "--yerel-kopya" in sys.argv
     if no_fetch:
         if os.path.exists(FON_CACHE):
             with open(FON_CACHE, encoding="utf-8") as f:
@@ -516,7 +523,7 @@ def main():
     else:
         onbellek = veri_guncelle(tam=tam)
     html_uret(onbellek)
-    if os.path.exists(FON_CACHE):
+    if YEREL_KOPYA and os.path.exists(FON_CACHE):
         try:
             yol, gun, fon = excel_uret()
             log(f"Excel: {yol} ({gun} gün × {fon} fon)")
