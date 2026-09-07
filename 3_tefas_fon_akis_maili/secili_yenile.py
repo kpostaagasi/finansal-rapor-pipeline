@@ -40,11 +40,23 @@ def onceki_hash(ad):
         return f.read().strip()
 
 
+def kapi_acik_mi(cfg, alan):
+    """`allow_send`/`allow_publish` gibi güvenlik kapılarını okur. Yalnız gerçek `True`
+    (bool) değeri kapıyı açar; başka her değer (dize, 0/1, None, liste…) KAPALI sayılır
+    ve stderr'e uyarı yazılır (B5: `cfg.get(alan, False)` truthiness ile "false" gibi
+    boş olmayan dizeleri de açık sayıyordu)."""
+    deger = cfg.get(alan, False)
+    if deger is True:
+        return True
+    print(f"UYARI: {alan} boolean değil ({deger!r}); kapı kapalı sayıldı", file=sys.stderr)
+    return False
+
+
 def main():
     force = "--force" in sys.argv
     no_push = "--no-push" in sys.argv
     cfg = load_config()
-    allow_publish = cfg.get("allow_publish", False)
+    allow_publish = kapi_acik_mi(cfg, "allow_publish")
     hata = 0
     yayinlandi = False
 

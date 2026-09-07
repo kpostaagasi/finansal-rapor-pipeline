@@ -170,6 +170,122 @@ class FundFlowCalculationTests(unittest.TestCase):
         self.assertEqual(yakalanan["meta"]["gap_codes"], ["BOSLUKLU"])
         self.assertEqual(raw["f"]["ESKI"][i3], 10)
 
+    def test_pay_bolunmesi_boundary_cases(self):
+        """pay_bolunmesi: pay oranı eşiği + değer toleransı sınır vakaları.
+
+        İki üreticide (tefas_secili.py, tefas_akis.py) birebir aynı davranış
+        beklenir — regresyon: TI2/GA1 gibi gerçek bölünmeler yanlış negatif,
+        sıradan büyük alım/satımlar yanlış pozitif vermemeli.
+        """
+        vakalar = [
+            ("TI2 gerçek bölünme (pay x9971, fiyat /9834)",
+             (7_453_535, 1003.618235), (74_320_597_890, 0.102052), True),
+            ("GA1 gerçek bölünme (pay x993)",
+             (1_000_000, 10.0), (993_000_000, 10.0 / 993), True),
+            ("normal büyük akış (pay x2, fiyat sabit -> değer x2)",
+             (1000, 10.0), (2000, 10.0), False),
+            ("eşik altı (pay x1.4)",
+             (1000, 10.0), (1400, 10.0), False),
+            ("ters yön birleşme (pay /10, fiyat x10)",
+             (10_000, 1.0), (1_000, 10.0), True),
+            ("değer %10 sapmış (tolerans dışı)",
+             (1000, 10.0), (10_000, 1.1), False),
+        ]
+        for ad, onceki, simdi, beklenen in vakalar:
+            for mod_ad, mod in (("secili", self.selected), ("akis", self.group)):
+                with self.subTest(vaka=ad, modul=mod_ad):
+                    self.assertEqual(mod.pay_bolunmesi(onceki, simdi), beklenen)
+
+    def test_selected_fund_unit_split_day_flow_is_not_published(self):
+        """Regresyon: eski davranışta pay bölünmesi günü hesaplanabilir bir
+        akış gibi görünüp (TI2 2025-01-20 örneğinde +7,58 mlr TL) fail-closed
+        kontrollerini atlatıyordu. Bölünme günü artık akış üretmez, izleyen
+        gün normal hesaplanmaya devam eder."""
+        cache = {
+            "fon": {
+                "SPL": {
+                    "2026-09-01": [100, 10.0],
+                    "2026-09-02": [110, 10.0],
+                    "2026-09-03": [11_000, 0.1],   # pay x100, fiyat /100, değer sabit
+                    "2026-09-04": [11_050, 0.1],
+                },
+            }
+        }
+
+        flows, _, _, gaps = self.selected.akis_serisi(cache)
+
+        self.assertNotIn("SPL", flows.get("2026-09-03", {}))
+        self.assertEqual(
+            gaps["2026-09-03"]["SPL"],
+            {"reason": "unit_split", "expected_previous": "2026-09-02",
+             "previous_available": "2026-09-02"},
+        )
+        self.assertEqual(flows["2026-09-04"]["SPL"], (11_050 - 11_000) * 0.1)
+
+    def test_group_flow_total_is_none_on_member_unit_split_day(self):
+        """Bir üyenin pay bölünmesi grup toplamını şişirmemeli: bölünme günü
+        toplam None olur, diğer günler etkilenmez (bkz. akislari_hesapla)."""
+        funds = {
+            "SPL": {
+                "2026-09-01": [100, 10.0],
+                "2026-09-02": [110, 10.0],
+                "2026-09-03": [11_000, 0.1],
+            },
+            "OTHER": {
+                "2026-09-01": [100, 1.0],
+                "2026-09-02": [105, 1.0],
+                "2026-09-03": [110, 1.0],
+            },
+        }
+        dates = ["2026-09-01", "2026-09-02", "2026-09-03"]
+
+        totals, counts, issues = self.group.akislari_hesapla(funds, dates)
+
+        self.assertEqual(totals["2026-09-02"], (110 - 100) * 10.0 + (105 - 100) * 1.0)
+        self.assertIsNone(totals["2026-09-03"])
+        self.assertEqual(counts["2026-09-03"], 2)
+
+    def test_report_meta_includes_split_codes_and_note(self):
+        """report_meta'ya split_codes/split_count eklenir, eksik notuna Contract
+        madde 2'deki cümle yazılır — regresyon: bölünme günü sessizce
+        "Hesaplandı" (F1 ile aynı sınıf hata) olarak görünmemeli."""
+        cache = {
+            "fon": {
+                "SPL": {
+                    "2026-09-01": [100, 10.0],
+                    "2026-09-02": [110, 10.0],
+                    "2026-09-03": [11_000, 0.1],
+                },
+            },
+            "ad": {"SPL": "S FONU"},
+            "tip": {"SPL": "YAT"},
+        }
+        cfg = {
+            "ad": "test",
+            "baslik": "Test",
+            "kapsam": {"tip": "tur", "turler": {"YAT": ["X"]}},
+            "fon_tipleri": ["YAT"],
+        }
+        yakalanan = {}
+
+        def sahte_yaz(cfg_, raw, meta, ozet, eksik_not, gunler):
+            yakalanan.update(meta=meta, eksik_not=eksik_not)
+
+        original = self.selected.html_yaz
+        self.selected.html_yaz = sahte_yaz
+        try:
+            self.selected.html_uret(cfg, cache)
+        finally:
+            self.selected.html_yaz = original
+
+        meta = yakalanan["meta"]
+        self.assertEqual(meta["split_codes"], ["SPL"])
+        self.assertEqual(meta["split_count"], 1)
+        self.assertIn(
+            "Pay bölünmesi nedeniyle akış hesaplanamayan 1 fon: SPL",
+            yakalanan["eksik_not"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

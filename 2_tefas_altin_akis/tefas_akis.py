@@ -131,6 +131,31 @@ def gecerli_gozlem(kayit):
     return pay is not None and fiyat is not None and pay > 0 and fiyat > 0
 
 
+BOLUNME_PAY_ESIGI = 1.5         # pay oranı bu eşiği aşarsa/altına inerse bölünme adayı
+BOLUNME_DEGER_TOLERANSI = 0.05  # pay×fiyat oranı 1'den bu kadar sapabilir
+
+
+def pay_bolunmesi(onceki_kayit, simdi_kayit):
+    """İki ardışık geçerli gözlem arasında pay bölünmesi/birleşmesi var mı?
+
+    TEFAS bazen bir fonun pay bölünmesini/birleşmesini sıradan bir güncelleme
+    gibi veriyor: pay sayısı binlerce kat sıçrıyor, fiyat ters orantılı düşüyor
+    (ör. TI2 2025-01-20: pay ×9971, fiyat ÷9834). (pay_t - pay_onceki) × fiyat_t
+    formülü bunu matematiksel olarak geçerli ama hayali, milyarlarca TL'lik bir
+    akış gibi hesaplıyor. Pay oranı BOLUNME_PAY_ESIGI'yi aşıp/altına inip fon
+    değeri (pay×fiyat) ~sabit kalıyorsa (BOLUNME_DEGER_TOLERANSI içinde) bu
+    sıradan bir alım/satım değil, birim değişimidir — akış hesaplanamaz
+    (fail-closed: bkz. akis_serisi).
+    """
+    onceki_pay, onceki_fiyat = onceki_kayit
+    simdi_pay, simdi_fiyat = simdi_kayit
+    pay_orani = simdi_pay / onceki_pay
+    fiyat_orani = simdi_fiyat / onceki_fiyat
+    deger_orani = pay_orani * fiyat_orani
+    esik_asildi = pay_orani >= BOLUNME_PAY_ESIGI or pay_orani <= 1 / BOLUNME_PAY_ESIGI
+    return esik_asildi and abs(deger_orani - 1) < BOLUNME_DEGER_TOLERANSI
+
+
 def topla(bas, bit, adlar=None):
     """[bas, bit] aralığı için fon bazında {kod: {tarih: (pay, fiyat)}} döndürür."""
     yf, eyf = defaultdict(dict), defaultdict(dict)
@@ -181,6 +206,10 @@ def akislari_hesapla(fonlar, tarihler):
     Bozuk TEFAS kaydı (bkz. gecerli_gozlem — tedPaySayisi<=0 veya fiyat<=0)
     gözlem sayılmaz: seri bu fonksiyonda okunurken elenir, o fon o tarihte
     hiç gözlem vermemiş gibi ele alınır (veri boşluğu).
+
+    Pay bölünmesi/birleşmesi tespit edilen fon-gün (bkz. pay_bolunmesi) de
+    aynı şekilde toplamdan dışlanır ve günün toplamını None'a çeker: tek bir
+    üyenin bölünmesi grup toplamını şişirmemeli (fail-closed).
     """
     toplam: dict[str, float | None] = {t: 0.0 for t in tarihler}
     sayim = {t: 0 for t in tarihler}
@@ -196,7 +225,10 @@ def akislari_hesapla(fonlar, tarihler):
         guncel_kodlar = {kod for kod, seri in gecerli.items() if t in seri}
         sorun[t]["missing_current"] = sorted(onceki_kodlar - guncel_kodlar)
         sorun[t]["missing_previous"] = sorted(guncel_kodlar - onceki_kodlar)
-        for kod in onceki_kodlar & guncel_kodlar:
+        ortak_kodlar = onceki_kodlar & guncel_kodlar
+        bolunenler = [kod for kod in ortak_kodlar
+                      if pay_bolunmesi(gecerli[kod][onceki], gecerli[kod][t])]
+        for kod in ortak_kodlar - set(bolunenler):
             pay, fiyat = gecerli[kod][t]
             toplam[t] = (toplam[t] or 0.0) + (pay - gecerli[kod][onceki][0]) * fiyat
         # İlk kez gözlemlenen fon (piyasaya çıkış) akış boşluğu DEĞİLDİR; akışı
@@ -206,7 +238,7 @@ def akislari_hesapla(fonlar, tarihler):
         # bir kaydı varsa bu gerçek bir çıkış değildir, kopukluk sayılır.
         kopuklar = [kod for kod in (guncel_kodlar - onceki_kodlar)
                     if min(fonlar[kod]) != t]
-        if sorun[t]["missing_current"] or kopuklar:
+        if sorun[t]["missing_current"] or kopuklar or bolunenler:
             toplam[t] = None
     return toplam, sayim, sorun
 

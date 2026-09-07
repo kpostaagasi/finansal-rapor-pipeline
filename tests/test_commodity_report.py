@@ -171,6 +171,89 @@ class CommodityReportTests(unittest.TestCase):
             [{"commodity": "Test Emtia", "symbol": "TTF28", "age_days": 10.4}],
         )
 
+    def test_fetch_quote_rejects_non_positive_or_non_numeric_prices(self):
+        """Regresyon: 0/negatif fiyat "geçerli gözlem" sayılıp HTML tablosunda
+        sıfıra bölme yüzünden "+∞" değişim yüzdesi üretiyordu; string tip ise
+        sonraki round() çağrısını TypeError ile TÜM raporu çökertiyordu.
+        TEFAS tarafındaki eşlenik hata: 2_tefas_altin_akis/tefas_akis.py
+        gecerli_gozlem (F1)."""
+        invalid_prices = [0.0, -5.25, "N/A", True, float("nan"), float("inf"), None]
+        for price in invalid_prices:
+            with self.subTest(price=price):
+                response = {
+                    "chart": {
+                        "result": [{
+                            "meta": {
+                                "regularMarketPrice": price,
+                                "regularMarketTime": 100_000,
+                            }
+                        }]
+                    }
+                }
+                with patch.object(self.module, "http_get", return_value=json.dumps(response)):
+                    quote = self.module.fetch_quote("TEST.CMX", now_ts=1_000_000)
+                self.assertIsNone(quote)
+
+        response = {
+            "chart": {
+                "result": [{
+                    "meta": {
+                        "regularMarketPrice": 42.5,
+                        "regularMarketTime": 100_000,
+                    }
+                }]
+            }
+        }
+        with patch.object(self.module, "http_get", return_value=json.dumps(response)):
+            quote = self.module.fetch_quote("TEST.CMX", now_ts=1_000_000)
+        self.assertEqual(quote["value"], 42.5)
+
+    def test_build_data_survives_treasury_failure_with_all_commodities_healthy(self):
+        """Regresyon: fetch_treasury istisna fırlattığında data["rates"] None
+        kalıyor, report_meta hesaplanırken data.get("rates", {}).get("points")
+        None.get(...) ile AttributeError'a düşüp 6/6 emtia sağlıklı olsa bile
+        TÜM raporu (emtia_futures.html) kaybettiriyordu."""
+        def fq(sym, now_ts=None):
+            return {"value": 55.5, "timestamp": 1_700_000_000, "age_days": 1.0, "stale": False}
+
+        with (
+            patch.object(self.module, "fetch_quote", side_effect=fq),
+            patch.object(self.module, "fetch_treasury", side_effect=RuntimeError("erisilemedi")),
+        ):
+            data = self.module.build_data()
+
+        self.assertEqual(len(data["curves"]), len(self.module.COMMODITIES))
+        self.assertEqual(data["rates"], {})
+        self.assertIn("Hazine getiri eğrisi alınamadı", data["warnings"])
+        self.assertEqual(data["report_meta"]["treasury_found_count"], 0)
+
+    def test_build_data_isolates_commodity_whose_every_contract_is_invalid(self):
+        """Regresyon: bir emtianın TÜM vadeleri geçersiz kotasyon döndürdüğünde
+        (ör. Yahoo sürekli 0/negatif fiyat veriyor) build_data yine üretilmeli;
+        yalnız o eğri kapsam dışı kalmalı, diğer beş eğri etkilenmemeli."""
+        def fq(sym, now_ts=None):
+            if sym.startswith("GC"):
+                return None
+            return {"value": 10.0, "timestamp": 1_700_000_000, "age_days": 1.0, "stale": False}
+
+        with (
+            patch.object(self.module, "fetch_quote", side_effect=fq),
+            patch.object(
+                self.module, "fetch_treasury", return_value={"date": "01/02/2027", "points": []}
+            ),
+        ):
+            data = self.module.build_data()
+
+        titles = {c["title"] for c in data["curves"]}
+        self.assertNotIn("Altın", titles)
+        self.assertEqual(len(data["curves"]), len(self.module.COMMODITIES) - 1)
+        altin_contracts = self.module.gen_contracts("GC", "CMX", [2, 4, 6, 8, 10, 12], 8)
+        altin_symbols = {sym.split(".")[0] for sym, _, _ in altin_contracts}
+        self.assertTrue(altin_symbols.issubset(set(data["report_meta"]["missing"])))
+        self.assertTrue(any(w.startswith("Altın: 0/") for w in data["warnings"]))
+        for curve in data["curves"]:
+            self.assertEqual(curve["found_count"], curve["candidate_count"])
+
     def test_report_describes_yahoo_values_without_close_or_settlement_claim(self):
         html = self.module.HTML
 

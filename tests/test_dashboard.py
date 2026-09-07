@@ -191,6 +191,56 @@ class BuildSiteTests(unittest.TestCase):
             statuses = json.loads((site / "report_status.json").read_text())
             self.assertEqual(statuses["emtia_futures.html"]["status"], "ready")
 
+    def test_partial_report_stays_partial_while_unrelated_failure_message_flows_through(self):
+        # B4 regresyonu: production.yml artık kısmi kapsamlı (exit 4) raporları
+        # --failure OLMADAN build_site.py'ye bırakır (REPORT_META'dan otomatik
+        # 'partial' çıkarımı için), yalnız gerçek üretim hatası yaşayan raporlar
+        # için --failure=hedef=mesaj geçirir. Bu test iki durumun AYNI build_site
+        # çağrısında birbirine karışmadığını ve workflow'un ürettiği mesaj
+        # metninin report_status.json'a bozulmadan taşındığını kilitler.
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            secili = root / "3_tefas_fon_akis_maili" / "tefas_secili_akis.html"
+            emtia = root / "1_emtia_tahvil_maili" / "emtia_futures.html"
+            secili.parent.mkdir(parents=True)
+            emtia.parent.mkdir(parents=True)
+            secili_meta = {
+                "last_successful_run": "2026-09-04T14:00:00+03:00",
+                "data_end_date": "2026-09-04",
+                "expected_count": 25,
+                "found_count": 25,
+                "missing": [],
+                "uncomputed_count": 1,
+                "uncomputed": ["PRY"],
+                "count_label": "fon",
+                "source": "TEFAS",
+            }
+            secili.write_text(
+                f"<script>const REPORT_META = {json.dumps(secili_meta)};</script>",
+                encoding="utf-8",
+            )
+            emtia.write_text("<html>son bilinen iyi hal</html>", encoding="utf-8")
+
+            # Workflow'un üretim adımının gerçek üretim hatası için ürettiği
+            # --failure argümanı birebir bu biçimde.
+            failure_arg = "--failure=emtia_futures.html=Emtia/ABD Hazine üretimi başarısız (exit 4)"
+            failures = module._parse_failures([failure_arg])
+
+            site = root / "site"
+            module.build_site(
+                root=root, site_dir=site, now=dt.date(2026, 9, 4), failures=failures,
+            )
+
+            statuses = json.loads((site / "report_status.json").read_text())
+            self.assertEqual(statuses["tefas_secili_akis.html"]["status"], "partial")
+            self.assertNotIn("error_message", statuses["tefas_secili_akis.html"])
+            self.assertEqual(statuses["emtia_futures.html"]["status"], "failed")
+            self.assertEqual(
+                statuses["emtia_futures.html"]["error_message"],
+                "Emtia/ABD Hazine üretimi başarısız (exit 4)",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

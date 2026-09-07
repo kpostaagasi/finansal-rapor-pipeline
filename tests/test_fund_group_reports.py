@@ -284,7 +284,7 @@ class GroupTotalTests(unittest.TestCase):
             return self.module.toplam_satirlari(cfg)
 
     def test_group_total_sums_member_fund_flows(self):
-        satirlar, bosluk, yakin, bilinmeyen = self.satirlar(self.kaynak_onbellegi())
+        satirlar, bosluk, yakin, bilinmeyen, _ = self.satirlar(self.kaynak_onbellegi())
         self.assertEqual(len(satirlar), 1)
         seri = satirlar[0]["seri"]
         # 02.09: (110-100)*1 + (230-200)*1 = 40 ; 03.09: 10 + 30 = 40
@@ -296,7 +296,7 @@ class GroupTotalTests(unittest.TestCase):
     def test_group_total_is_null_on_every_day_the_gapped_member_stays_active(self):
         """BBB'nin gözlem aralığı (09-01, 09-03] hem 02.09'u hem 03.09'u kapsıyor;
         BBB o günlerde akış vermediği için grup toplamı sessizce kısmi kalmaz, null olur."""
-        satirlar, bosluk, yakin, _ = self.satirlar(
+        satirlar, bosluk, yakin, _, _ = self.satirlar(
             self.kaynak_onbellegi(ikinci_fon_bosluklu=True)
         )
         seri = satirlar[0]["seri"]
@@ -319,7 +319,7 @@ class GroupTotalTests(unittest.TestCase):
             "ad": {"AAA": "A", "NEW": "N", "CLOSED": "C"},
             "tip": {"AAA": "YAT", "NEW": "YAT", "CLOSED": "YAT"},
         }
-        satirlar, bosluk, yakin, _ = self.satirlar(onbellek)
+        satirlar, bosluk, yakin, _, _ = self.satirlar(onbellek)
         seri = satirlar[0]["seri"]
         self.assertEqual(seri["2026-09-02"], 30)   # AAA(10) + CLOSED(20), CLOSED henüz aktif
         self.assertEqual(seri["2026-09-03"], 10)   # CLOSED artık aralık dışı, iptal etmiyor
@@ -331,14 +331,14 @@ class GroupTotalTests(unittest.TestCase):
         fikstürleri gibi) TUM satırı üretilmemeli: YAT satırının birebir
         kopyası olurdu. Bilinçli bir kural — sessizce ikinci bir 'TST-TUM'
         satırı belirmesini yakalar."""
-        satirlar, _, _, _ = self.satirlar(self.kaynak_onbellegi())
+        satirlar, _, _, _, _ = self.satirlar(self.kaynak_onbellegi())
         self.assertEqual({s["anahtar"] for s in satirlar}, {"TST-YAT"})
 
     def test_group_total_adds_a_combined_row_when_the_source_has_both_fund_types(self):
         """Kaynakta hem YAT hem EMK varsa toplam_satirlari üçüncü bir TUM
         satırı üretir; TUM serisi, YAT ve EMK'nin ikisi de hesaplanabildiği
         günlerde onların toplamına eşittir."""
-        satirlar, _, _, _ = self.satirlar(
+        satirlar, _, _, _, _ = self.satirlar(
             self.karisik_tip_onbellegi(), fon_tipleri=("YAT", "EMK")
         )
         by_key = {s["anahtar"]: s for s in satirlar}
@@ -354,7 +354,7 @@ class GroupTotalTests(unittest.TestCase):
     def test_group_total_combined_row_is_null_when_a_member_type_is_null(self):
         """EMK tarafında boşluk varsa TUM da o günlerde null olmalı: YAT kısmı
         sağlam diye TUM sessizce kısmi bir toplam üretmemeli."""
-        satirlar, _, _, _ = self.satirlar(
+        satirlar, _, _, _, _ = self.satirlar(
             self.karisik_tip_onbellegi(emk_bosluklu=True), fon_tipleri=("YAT", "EMK")
         )
         by_key = {s["anahtar"]: s for s in satirlar}
@@ -362,6 +362,28 @@ class GroupTotalTests(unittest.TestCase):
             self.assertIsNotNone(by_key["TST-YAT"]["seri"][t])
             self.assertIsNone(by_key["TST-EMK"]["seri"][t])
             self.assertIsNone(by_key["TST-TUM"]["seri"][t])
+
+    def bolunme_onbellegi(self):
+        """kaynak_onbellegi ile aynı yapı; BBB 09-03'te pay bölünmesi yaşıyor
+        (pay x100, fiyat /100 — değer sabit kalıyor, bkz. pay_bolunmesi)."""
+        a = {"2026-09-01": [100, 1.0], "2026-09-02": [110, 1.0], "2026-09-03": [120, 1.0]}
+        b = {"2026-09-01": [200, 1.0], "2026-09-02": [230, 1.0],
+             "2026-09-03": [23_000, 0.01]}
+        return {
+            "fon": {"AAA": a, "BBB": b},
+            "ad": {"AAA": "A FONU", "BBB": "B FONU"},
+            "tip": {"AAA": "YAT", "BBB": "YAT"},
+        }
+
+    def test_group_total_is_null_on_member_unit_split_day(self):
+        """B1 regresyonu: bir üyenin pay bölünmesi grup toplamını (ör.
+        tefas_gruplar_akis.html'deki HIS-YAT satırı) şişirmemeli — bölünme
+        günü toplam None olur, önceki gün etkilenmez."""
+        satirlar, bosluk, yakin, _, _ = self.satirlar(self.bolunme_onbellegi())
+        seri = satirlar[0]["seri"]
+        self.assertEqual(seri["2026-09-02"], 40)   # bölünmeden önce değişmedi
+        self.assertIsNone(seri["2026-09-03"])       # BBB'nin bölünmesi toplamı iptal eder
+        self.assertEqual(bosluk, 1)
 
     def test_duplicate_fund_gap_across_sources_is_counted_once(self):
         """Aynı fon-gün boşluğu iki kaynak raporda da geçse (altın ⊂ kıymetli maden gibi)
@@ -393,7 +415,7 @@ class GroupTotalTests(unittest.TestCase):
                 return {"cache": p1 if ad == "r1" else p2, "fon_tipleri": ["YAT"]}
 
             with patch.object(self.module, "rapor_yukle", sahte_rapor_yukle):
-                satirlar, bosluk, yakin, _ = self.module.toplam_satirlari(cfg)
+                satirlar, bosluk, yakin, _, _ = self.module.toplam_satirlari(cfg)
         self.assertEqual(len(satirlar), 2)
         self.assertEqual(bosluk, 1)
         self.assertEqual(yakin, 1)
@@ -753,7 +775,7 @@ class RecentGapWindowTests(unittest.TestCase):
                 self._sahte_akis_serisi(son_iso, gun_90_iso, gun_91_iso),
             ),
         ):
-            _, bosluk, yakin, _ = self.module.toplam_satirlari(cfg)
+            _, bosluk, yakin, _, _ = self.module.toplam_satirlari(cfg)
         self.assertEqual(bosluk, 2)   # pencere dışı da dahil, iki (kod, tarih) boşluğu
         self.assertEqual(yakin, 1)    # yalnız 90 gün önceki
 

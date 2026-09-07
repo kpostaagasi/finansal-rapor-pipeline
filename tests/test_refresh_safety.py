@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import sys
 import tempfile
 import unittest
@@ -39,6 +40,27 @@ class RefreshSafetyTests(unittest.TestCase):
         self.assertEqual(result, 0)
         generate.assert_called_once_with(report)
         publish.assert_not_called()
+
+    def test_allow_publish_non_boolean_string_keeps_refresh_local(self):
+        """B5 regresyonu: eski `cfg.get("allow_publish", False)` truthiness kontrolü
+        boş olmayan "false" dizesini de açık sayıyor, GitHub'a yayın yapılabiliyordu."""
+        report = {"ad": "secili", "html": "/tmp/secili.html"}
+        with (
+            patch.object(self.module, "load_config", return_value={"allow_publish": "false"}),
+            patch.object(self.module, "rapor_configleri", return_value=[report]),
+            patch.object(self.module, "generate_report", return_value=True) as generate,
+            patch.object(self.module, "html_hash", return_value="new"),
+            patch.object(self.module, "onceki_hash", return_value="old"),
+            patch.object(self.module, "push_to_github") as publish,
+            patch.object(sys, "argv", ["secili_yenile.py"]),
+            patch.object(sys, "stderr", new_callable=io.StringIO) as stderr,
+        ):
+            result = self.module.main()
+
+        self.assertEqual(result, 0)
+        generate.assert_called_once_with(report)
+        publish.assert_not_called()
+        self.assertIn("UYARI: allow_publish boolean değil ('false')", stderr.getvalue())
 
     def test_no_push_keeps_refresh_local_even_when_publish_is_allowed(self):
         report = {"ad": "secili", "html": "/tmp/secili.html"}

@@ -3,7 +3,8 @@
 Kaynaklar: Yahoo Finance (vadeli kontratlar), US Treasury (getiri egrisi).
 Cikti: emtia_futures.html (ayni dizine).
 """
-import datetime, json, os, ssl, sys, urllib.error, urllib.request
+import datetime, json, math, os, ssl, sys, urllib.error, urllib.request
+from numbers import Real
 
 import certifi
 
@@ -38,13 +39,29 @@ def gen_contracts(root, suffix, cycle, count):
         if len(out) >= count:
             break
     return out
+def gecerli_fiyat(deger):
+    """Yahoo kotasyonu geçerli bir gözlem mi?
+
+    TEFAS tarafındaki eşlenik hata (bkz. 2_tefas_altin_akis/tefas_akis.py
+    gecerli_gozlem / F1): bozuk bir değer matematiksel olarak geçerliymiş
+    gibi görünüp fail-closed kontrollerini atlatıyordu — sıfır fiyat HTML
+    tablosunda "+∞" değişim yüzdesi üretiyor, string tip ise sonraki
+    round() çağrısında TypeError'a düşüp TÜM raporu çökertiyordu. bool,
+    sayısal olmayan, sonsuz/NaN veya <=0 değer gözlem SAYILMAZ.
+    """
+    return (
+        isinstance(deger, Real)
+        and not isinstance(deger, bool)
+        and math.isfinite(deger)
+        and deger > 0
+    )
 
 def fetch_quote(sym, now_ts=None):
     try:
         d = json.loads(http_get(f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}?range=1d&interval=1d"))
         meta = d["chart"]["result"][0]["meta"]
         px, ts = meta.get("regularMarketPrice"), meta.get("regularMarketTime", 0)
-        if px is None:
+        if not gecerli_fiyat(px):
             return None
         now_ts = now_ts if now_ts is not None else datetime.datetime.now().timestamp()
         age_days = max(0.0, (now_ts - ts) / 86400) if ts else None
@@ -79,7 +96,7 @@ def build_data():
     data = {
         "generated": datetime.datetime.now().strftime("%d.%m.%Y %H:%M"),
         "curves": [],
-        "rates": None,
+        "rates": {},
         "warnings": [],
     }
     total_requested = 0
@@ -152,6 +169,7 @@ def build_data():
             pass
     except Exception as e:
         print(f"UYARI: hazine getirileri alinamadi: {e}", file=sys.stderr)
+        data["warnings"].append("Hazine getiri eğrisi alınamadı")
     data["report_meta"] = {
         "last_successful_run": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
         "data_end_date": max(data_dates).isoformat() if data_dates else None,
@@ -161,7 +179,7 @@ def build_data():
         "missing": all_missing,
         "excluded_stale_quotes": all_stale,
         "treasury_expected_count": 12,
-        "treasury_found_count": len(data.get("rates", {}).get("points", [])),
+        "treasury_found_count": len(data["rates"].get("points", [])),
         "count_label": "kontrat",
         "source": "Yahoo Finance + ABD Hazinesi",
     }
@@ -362,7 +380,7 @@ function card(curve, wide, badgeText) {
     <details><summary>Tablo</summary><table><thead><tr><th>Vade</th><th>${curve.unit}</th>${dif ? '<th>Δ bp</th>' : ''}${difU ? '<th>Δ</th><th>Δ %</th>' : ''}</tr></thead><tbody>
     ${curve.points.map((p, i) => {
       const prev = i ? curve.points[i-1].value : null;
-      return `<tr><td>${p.tlabel || ((p.sym ? p.sym + ' — ' : '') + p.label)}</td><td>${fmt(p.value, curve.dec)}</td>${dif ? `<td>${i ? fmtSign(Math.round((p.value - prev) * 100)) : '—'}</td>` : ''}${difU ? `<td>${i ? fmtSignD(p.value - prev, curve.dec) : '—'}</td><td>${i ? fmtSignD((p.value/prev - 1) * 100, 1) : '—'}</td>` : ''}</tr>`;
+      return `<tr><td>${p.tlabel || ((p.sym ? p.sym + ' — ' : '') + p.label)}</td><td>${fmt(p.value, curve.dec)}</td>${dif ? `<td>${i ? fmtSign(Math.round((p.value - prev) * 100)) : '—'}</td>` : ''}${difU ? `<td>${i ? fmtSignD(p.value - prev, curve.dec) : '—'}</td><td>${i && prev ? fmtSignD((p.value/prev - 1) * 100, 1) : '—'}</td>` : ''}</tr>`;
     }).join('')}
     </tbody></table></details>`;
   document.getElementById('grid').appendChild(el);
@@ -390,10 +408,10 @@ for (const c of DATA.curves) {
   const complete = c.found_count === c.requested_count;
   const badge = !complete ? 'Kaynakta eksik' : (l.value > f.value * 1.002 ? 'Contango' : l.value < f.value * 0.998 ? 'Backwardation' : 'Yatay');
   c.diffUnit = true;
-  c.spreads = `${f.label} → ${l.label}: <b>${fmtSignD(l.value - f.value, c.dec)} ${c.unit}</b> (${fmtSignD((l.value/f.value - 1) * 100, 1)}%)`;
+  c.spreads = `${f.label} → ${l.label}: <b>${fmtSignD(l.value - f.value, c.dec)} ${c.unit}</b> (${f.value ? fmtSignD((l.value/f.value - 1) * 100, 1) : '—'}%)`;
   rendered.push([card(c, false, badge), c, drawChart]);
 }
-if (DATA.rates && DATA.rates.points.length) {
+if (DATA.rates && DATA.rates.points && DATA.rates.points.length) {
   const rp = DATA.rates.points;
   const get = l => { const p = rp.find(q => q.label === l); return p ? p.value : null; };
   const sp = (a, b) => { const va = get(a), vb = get(b); return va == null || vb == null ? null : Math.round((vb - va) * 100); };

@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import shutil
 import sys
 import unittest
@@ -187,6 +188,25 @@ class GunlukMailSafetyTests(unittest.TestCase):
         self.assertEqual(result, 5)
         keychain.assert_not_called()
 
+    def test_allow_send_non_boolean_string_still_blocks_send(self):
+        """B5 regresyonu: `cfg.get("allow_send", False)` truthiness kontrolü boş
+        olmayan "false" dizesini açık sayıyor, mail gönderilebiliyordu."""
+        cfg = self.config() | {"allow_publish": True, "allow_send": "false"}
+        with (
+            patch.object(self.module, "load_config", return_value=cfg),
+            patch.object(self.module, "generate_report", return_value=True),
+            patch.object(self.module, "generate_tefas", return_value=True),
+            patch.object(self.module, "push_to_github", return_value=True),
+            patch.object(self.module, "publish_dashboard", return_value=True, create=True) as dashboard,
+            patch.object(self.module, "keychain_password") as keychain,
+            patch.object(sys, "argv", ["gunluk_mail.py"]),
+        ):
+            result = self.module.main()
+
+        self.assertEqual(result, 3)
+        dashboard.assert_called_once_with(cfg)
+        keychain.assert_not_called()
+
 
 class SeciliMailSafetyTests(unittest.TestCase):
     @classmethod
@@ -365,6 +385,61 @@ class SeciliMailSafetyTests(unittest.TestCase):
 
         self.assertEqual(result, 5)
         keychain.assert_not_called()
+
+    def test_allow_send_non_boolean_string_still_blocks_send(self):
+        """B5 regresyonu: `cfg.get("allow_send", False)` truthiness kontrolü boş
+        olmayan "false" dizesini açık sayıyor, mail gönderilebiliyordu."""
+        cfg = self.config() | {"allow_publish": True, "allow_send": "false"}
+        reports = self.reports()
+        with (
+            patch.object(self.module, "load_config", return_value=cfg),
+            patch.object(self.module, "rapor_configleri", return_value=reports),
+            patch.object(self.module, "generate_report", return_value=True),
+            patch.object(self.module, "push_to_github", return_value=True),
+            patch.object(self.module, "publish_dashboard", return_value=True, create=True) as dashboard,
+            patch.object(self.module, "keychain_password") as keychain,
+            patch.object(sys, "argv", ["secili_mail.py"]),
+        ):
+            result = self.module.main()
+
+        self.assertEqual(result, 3)
+        dashboard.assert_called_once_with(cfg)
+        keychain.assert_not_called()
+
+
+class GateStrictnessTests(unittest.TestCase):
+    """B5 regresyonu: `cfg.get(alan, False)` truthiness kontrolü `"allow_send": "false"`
+    gibi boş olmayan dizeleri de açık sayıyordu. `kapi_acik_mi` üç dosyada da birebir
+    aynı: yalnız gerçek `True` (bool) değeri kapıyı açar, başka her değer KAPALI sayılır
+    ve stderr'e uyarı yazılır."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.modules = [
+            load_module("gate_table_gunluk", "1_emtia_tahvil_maili/gunluk_mail.py"),
+            load_module("gate_table_secili_mail", "3_tefas_fon_akis_maili/secili_mail.py"),
+            load_module("gate_table_secili_yenile", "3_tefas_fon_akis_maili/secili_yenile.py"),
+        ]
+
+    def test_literal_true_opens_the_gate(self):
+        for module in self.modules:
+            for alan in ("allow_send", "allow_publish"):
+                with self.subTest(module=module.__name__, alan=alan):
+                    self.assertTrue(module.kapi_acik_mi({alan: True}, alan))
+
+    def test_every_non_true_value_closes_the_gate_and_warns_on_stderr(self):
+        kapali_degerler = [False, "true", "false", "0", 0, 1, None]
+        for module in self.modules:
+            for alan in ("allow_send", "allow_publish"):
+                for deger in kapali_degerler:
+                    with self.subTest(module=module.__name__, alan=alan, deger=deger):
+                        with patch.object(sys, "stderr", new_callable=io.StringIO) as stderr:
+                            acik = module.kapi_acik_mi({alan: deger}, alan)
+                        self.assertFalse(acik)
+                        self.assertEqual(
+                            stderr.getvalue().strip(),
+                            f"UYARI: {alan} boolean değil ({deger!r}); kapı kapalı sayıldı",
+                        )
 
 
 if __name__ == "__main__":

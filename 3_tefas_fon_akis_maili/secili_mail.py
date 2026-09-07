@@ -19,7 +19,7 @@ Kullanım:
   python3 secili_mail.py --example  # SADECE gönderene [ÖRNEK] maili at
   python3 secili_mail.py --no-push  # yerelde üret; yükleme/mail yok
 """
-import os, sys, re, json, ssl, base64, smtplib, subprocess, shutil, tempfile, datetime as dt
+import os, sys, re, json, ssl, base64, smtplib, subprocess, shutil, tempfile, fcntl, datetime as dt
 from email.message import EmailMessage
 from email.utils import formataddr, formatdate
 
@@ -50,6 +50,18 @@ def ssl_context():
 def load_config():
     with open(CONFIG, encoding="utf-8") as f:
         return json.load(f)
+
+
+def kapi_acik_mi(cfg, alan):
+    """`allow_send`/`allow_publish` gibi güvenlik kapılarını okur. Yalnız gerçek `True`
+    (bool) değeri kapıyı açar; başka her değer (dize, 0/1, None, liste…) KAPALI sayılır
+    ve stderr'e uyarı yazılır (B5: `cfg.get(alan, False)` truthiness ile "false" gibi
+    boş olmayan dizeleri de açık sayıyordu)."""
+    deger = cfg.get(alan, False)
+    if deger is True:
+        return True
+    print(f"UYARI: {alan} boolean değil ({deger!r}); kapı kapalı sayıldı", file=sys.stderr)
+    return False
 
 
 def rapor_configleri(cfg):
@@ -96,34 +108,49 @@ def mark_sent():
             os.unlink(temporary)
 
 
-def acquire_send_claim():
-    """Aynı gün yalnız bir sürecin SMTP aşamasına girmesini sağlar."""
+_send_claim_fd = None
+
+
+def acquire_send_claim(force=False):
+    """Aynı gün yalnız bir sürecin SMTP aşamasına girmesini sağlar.
+
+    Kilit dosyası kalıcıdır (bırakılırken silinmez); fcntl.flock(LOCK_EX|LOCK_NB)
+    içerikten bağımsız çalıştığı için eski `os.unlink` ile devralma yarışı (B6: kilit
+    dosyası oluşturulup içeriği HENÜZ yazılmadan ikinci sürecin onu "bayat" sanıp
+    silmesi, aynı gün 2 mail) ortadan kalkar. `force=True` yalnız bugünün etiketini
+    yok sayar; canlı (başka süreçte flock ile tutulan) bir kilidi asla devralmaz.
+    """
+    global _send_claim_fd
     os.makedirs(os.path.dirname(SEND_CLAIM), exist_ok=True)
-    for _ in range(2):
-        try:
-            fd = os.open(SEND_CLAIM, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-        except FileExistsError:
-            try:
-                with open(SEND_CLAIM, encoding="utf-8") as f:
-                    if f.read().strip() == today_tag():
-                        return False
-                os.unlink(SEND_CLAIM)
-                continue
-            except (FileNotFoundError, OSError):
-                return False
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(today_tag())
-            f.flush()
-            os.fsync(f.fileno())
-        return True
-    return False
+    fd = os.open(SEND_CLAIM, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(fd)
+        return False
+    onceki = os.read(fd, 64).decode("utf-8", "ignore").strip()
+    if onceki == today_tag() and not force:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+        return False
+    os.lseek(fd, 0, os.SEEK_SET)
+    os.truncate(fd, 0)
+    os.write(fd, today_tag().encode("utf-8"))
+    os.fsync(fd)
+    _send_claim_fd = fd
+    return True
 
 
 def release_send_claim():
+    """Kilidi bırakır; dosya SİLİNMEZ (bir sonraki gün veya --force üzerine yazar)."""
+    global _send_claim_fd
+    if _send_claim_fd is None:
+        return
+    fd, _send_claim_fd = _send_claim_fd, None
     try:
-        os.unlink(SEND_CLAIM)
-    except FileNotFoundError:
-        pass
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
 
 
 def generate_report(rapor):
@@ -287,7 +314,7 @@ def main():
     example = "--example" in sys.argv
     no_push = "--no-push" in sys.argv
     cfg = load_config()
-    allow_publish = cfg.get("allow_publish", False)
+    allow_publish = kapi_acik_mi(cfg, "allow_publish")
     raporlar = rapor_configleri(cfg)
 
     if example:
@@ -339,7 +366,7 @@ def main():
             log("HATA: dashboard yayını tamamlanamadı; mail engellendi")
             return 5
 
-    if not cfg.get("allow_send", False):
+    if not kapi_acik_mi(cfg, "allow_send"):
         log("GÜVENLİK: allow_send=false; mail gönderimi kapalı")
         return 3
 
@@ -349,7 +376,7 @@ def main():
 
     claimed = False
     if not example:
-        claimed = acquire_send_claim()
+        claimed = acquire_send_claim(force)
         if not claimed:
             log("GÜVENLİK: başka bir süreç bugünkü gönderimi üstlenmiş; mail atlandı")
             return 0

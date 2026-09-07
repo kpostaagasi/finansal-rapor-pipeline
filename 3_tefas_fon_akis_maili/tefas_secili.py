@@ -299,6 +299,31 @@ def gecerli_gozlem(kayit):
     return pay is not None and fiyat is not None and pay > 0 and fiyat > 0
 
 
+BOLUNME_PAY_ESIGI = 1.5         # pay oranı bu eşiği aşarsa/altına inerse bölünme adayı
+BOLUNME_DEGER_TOLERANSI = 0.05  # pay×fiyat oranı 1'den bu kadar sapabilir
+
+
+def pay_bolunmesi(onceki_kayit, simdi_kayit):
+    """İki ardışık geçerli gözlem arasında pay bölünmesi/birleşmesi var mı?
+
+    TEFAS bazen bir fonun pay bölünmesini/birleşmesini sıradan bir güncelleme
+    gibi veriyor: pay sayısı binlerce kat sıçrıyor, fiyat ters orantılı düşüyor
+    (ör. TI2 2025-01-20: pay ×9971, fiyat ÷9834). (pay_t - pay_onceki) × fiyat_t
+    formülü bunu matematiksel olarak geçerli ama hayali, milyarlarca TL'lik bir
+    akış gibi hesaplıyor. Pay oranı BOLUNME_PAY_ESIGI'yi aşıp/altına inip fon
+    değeri (pay×fiyat) ~sabit kalıyorsa (BOLUNME_DEGER_TOLERANSI içinde) bu
+    sıradan bir alım/satım değil, birim değişimidir — akış hesaplanamaz
+    (fail-closed: bkz. akis_serisi).
+    """
+    onceki_pay, onceki_fiyat = onceki_kayit
+    simdi_pay, simdi_fiyat = simdi_kayit
+    pay_orani = simdi_pay / onceki_pay
+    fiyat_orani = simdi_fiyat / onceki_fiyat
+    deger_orani = pay_orani * fiyat_orani
+    esik_asildi = pay_orani >= BOLUNME_PAY_ESIGI or pay_orani <= 1 / BOLUNME_PAY_ESIGI
+    return esik_asildi and abs(deger_orani - 1) < BOLUNME_DEGER_TOLERANSI
+
+
 def topla(cfg, bas, bit, adlar, tipler, pencere_bitti=None):
     """[bas, bit] için ({kod: {tarih: (pay, fiyat)}}, kapsam) döndürür.
 
@@ -384,6 +409,11 @@ def akis_serisi(onbellek):
     'invalid_observation' nedeniyle girer ve ilk-gözlem (piyasaya çıkış)
     istisnasını tetiklemez (istisna yalnız fonun HAM serideki en eski
     tarihinde, o kayıt geçerliyse uygulanır).
+
+    İki ardışık geçerli gözlem arasında pay bölünmesi/birleşmesi tespit
+    edilirse (bkz. `pay_bolunmesi`) o gün için de akış üretilmez: tarih
+    'bosluklar'a 'unit_split' nedeniyle girer. Fail-closed — TEFAS bölünme
+    oranını yayınlamadığı için tahminle akış hesaplanmaz.
     """
     fonlar = onbellek["fon"]
     tarihler = sorted({t for s in fonlar.values() for t in s})
@@ -418,6 +448,17 @@ def akis_serisi(onbellek):
                 bosluklar.setdefault(t, {})[kod] = {
                     "expected_previous": beklenen,
                     "previous_available": onceki_mevcut.get(t),
+                }
+                akis.setdefault(t, {})
+                continue
+            if pay_bolunmesi(gecerli[beklenen], gecerli[t]):
+                # Pay bölünmesi/birleşmesi: (pay_t - pay_onceki) × fiyat_t hayali
+                # bir akış üretir (bkz. pay_bolunmesi). Fail-closed: akış
+                # üretilmez, boşluk kaydına 'unit_split' nedeniyle girer.
+                bosluklar.setdefault(t, {})[kod] = {
+                    "reason": "unit_split",
+                    "expected_previous": beklenen,
+                    "previous_available": beklenen,
                 }
                 akis.setdefault(t, {})
                 continue
@@ -470,6 +511,10 @@ def kapsam_durumu(cfg, onbellek):
     yakin_bosluk_n = sum(
         len(kodlar) for tarih, kodlar in bosluklar.items() if tarih >= kesim
     )
+    split_codes = sorted({
+        k for kodlar in bosluklar.values()
+        for k, v in kodlar.items() if v.get("reason") == "unit_split"
+    })
     return {
         "akis": akis,
         "gunler": gunler,
@@ -482,6 +527,8 @@ def kapsam_durumu(cfg, onbellek):
         "uncomputed": sorted(bulunan - hesaplanan),
         "launched": sorted(launched),
         "recent_gap_count": yakin_bosluk_n,
+        "split_codes": split_codes,
+        "split_count": len(split_codes),
     }
 
 
@@ -546,6 +593,10 @@ def html_uret(cfg, onbellek):
         eksik_not += ("<span class=\"missing-note\">Son veri tarihinde piyasaya yeni "
                       f"çıkan {len(durum['launched'])} fon: "
                       + html_lib.escape(", ".join(durum["launched"])) + "</span>")
+    if durum["split_codes"]:
+        eksik_not += ("<span class=\"missing-note\">Pay bölünmesi nedeniyle akış hesaplanamayan "
+                      f"{durum['split_count']} fon: "
+                      + html_lib.escape(", ".join(durum["split_codes"])) + "</span>")
     # null = "hesaplanamadı" (ardışık TEFAS gözlemi yok). Fonun piyasaya
     # çıkışından önceki / kapanışından sonraki günler ile çıkış gününün kendisi
     # boşluk değildir: akışa 0 katkı verir ve dönem toplamını iptal etmez.
@@ -575,6 +626,8 @@ def html_uret(cfg, onbellek):
         "launched": durum["launched"],
         "gap_count": bosluk_n,
         "recent_gap_count": durum["recent_gap_count"],
+        "split_count": durum["split_count"],
+        "split_codes": durum["split_codes"],
         "gap_codes": sorted({k for x in durum["bosluklar"].values() for k in x}),
         "untyped_count": len(bilinmeyen),
         "untyped": list(bilinmeyen),
@@ -627,6 +680,7 @@ def toplam_satirlari(cfg):
     satirlar = []
     bosluk_gunler = set()       # (kod, tarih) — kaynaklar arası aynı fon-gün
     yakin_bosluk_gunler = set() # birden çok kaynakta (altın⊂kıymetli maden vb.)
+    split_kodlari = set()       # pay bölünmesi görülen fonlar (tüm seri boyunca)
     bilinmeyen = set()          # tekrar sayılmasın diye çift değil küme
     for kaynak in cfg["kapsam"]["kaynaklar"]:
         alt = rapor_yukle(kaynak["rapor"])
@@ -640,6 +694,9 @@ def toplam_satirlari(cfg):
         akis, gunler, _, bosluklar = akis_serisi(onbellek)
         for t, kodlar in bosluklar.items():
             bosluk_gunler.update((k, t) for k in kodlar)
+            split_kodlari.update(
+                k for k, v in kodlar.items() if v.get("reason") == "unit_split"
+            )
         if gunler:
             # Yakın pencere: kaynağın son veri gününden YAKIN_PENCERE_GUN (90) gün geriye — dahil.
             kesim = (dt.date.fromisoformat(gunler[-1]) - dt.timedelta(days=YAKIN_PENCERE_GUN)).isoformat()
@@ -667,7 +724,8 @@ def toplam_satirlari(cfg):
                 f"{kaynak['kod']}-TUM", f"{kaynak['grup']} — {GRUP_AD['TUM']}",
                 "TUM", tum_kodlar, akis, gunler, onbellek["fon"],
             ))
-    return satirlar, len(bosluk_gunler), len(yakin_bosluk_gunler), sorted(bilinmeyen)
+    return (satirlar, len(bosluk_gunler), len(yakin_bosluk_gunler),
+            sorted(bilinmeyen), sorted(split_kodlari))
 
 
 def ortak_fonlar(satirlar):
@@ -693,7 +751,7 @@ def ortak_fonlar(satirlar):
 
 
 def toplam_html_uret(cfg):
-    satirlar, bosluk_n, yakin_bosluk_n, bilinmeyen = toplam_satirlari(cfg)
+    satirlar, bosluk_n, yakin_bosluk_n, bilinmeyen, split_kodlari = toplam_satirlari(cfg)
     if not satirlar:
         raise RuntimeError("grup raporunda satır yok")
     gunler = kesin_tarihler(sorted({t for s in satirlar for t in s["seri"]}))
@@ -746,6 +804,11 @@ def toplam_html_uret(cfg):
         eksik_not += ("<span class=\"missing-note\">TEFAS fon türünü açıklamadığı için "
                       f"kapsam dışı kalan {len(bilinmeyen)} fon: "
                       + html_lib.escape(", ".join(bilinmeyen)) + "</span>")
+    if split_kodlari:
+        eksik_not += ("<span class=\"missing-note\">Pay bölünmesi nedeniyle akış "
+                      f"hesaplanamayan {len(split_kodlari)} fon: "
+                      + html_lib.escape(", ".join(split_kodlari))
+                      + "; o günün grup toplamı boş bırakıldı.</span>")
     raw = {
         "d": gunler,
         "ad": {s["anahtar"]: s["ad"] for s in sirali},
@@ -767,6 +830,8 @@ def toplam_html_uret(cfg):
         "gap_count": bosluk_n,
         "recent_gap_count": yakin_bosluk_n,
         "gap_codes": [],
+        "split_count": len(split_kodlari),
+        "split_codes": split_kodlari,
         "fund_count": tekil_fon,
         "row_fund_count": fon_sayisi,
         "overlap_pairs": [{"a": a, "b": b, "fon": n} for a, b, n in ortak_ciftler],

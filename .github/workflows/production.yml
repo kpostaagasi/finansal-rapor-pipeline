@@ -29,19 +29,82 @@ jobs:
         env:
           TZ: Europe/Istanbul
         run: |
+          # GitHub Actions 'run:' adımları varsayılan olarak `bash -e` ile
+          # çalışır: herhangi bir komut sıfırdışı dönerse adım hemen durur.
+          # Kısmi kapsam (bazı fon/grup bulunamadı) günlük olağan bir durumdur
+          # ve yayını durdurmamalı (B4) — bu yüzden -e burada kapatılıp her
+          # üreticinin çıkış kodu elle sınıflandırılıyor. Adım her koşulda
+          # başarıyla biter; gerçek üretim hataları sonraki 'Site build'
+          # adımına --failure=hedef=mesaj olarak taşınıp dashboard'da
+          # 'failed' gösterilir (o raporun son bilinen iyi hali korunur).
+          set +e
+
+          : > /tmp/uretim_basarisizlar.txt
+
+          calistir_tefas() {
+            # $1=rapor adı (raporlar/<ad>.json), $2=build_site.py REPORTS hedefi.
+            # tefas_secili.py exit kodları (main(), 3_tefas_fon_akis_maili/tefas_secili.py
+            # satır 783-817'de doğrulandı):
+            #   0 = tam kapsam
+            #   4 = kısmi kapsam: bazı fon/grup bulunamadı ya da önceki TEFAS
+            #       gözlemi olmadığı için akış hesaplanamadı — HTML yine de
+            #       o günün doğru REPORT_META'sıyla YENİDEN ÜRETİLDİ
+            #       (build_site.py bunu otomatik 'partial' gösterir,
+            #       --failure GEREKMEZ)
+            #   diğer = yakalanmamış hata (ör. RuntimeError): HTML YENİDEN
+            #       ÜRETİLMEDİ, son bilinen iyi hali kalır → 'failed' işaretlenir
+            local rapor="$1" hedef="$2"
+            python 3_tefas_fon_akis_maili/tefas_secili.py --rapor "$rapor"
+            local kod=$?
+            if [ "$kod" -eq 4 ]; then
+              echo "::warning::$hedef kısmi kapsamla üretildi (--rapor $rapor, exit 4)"
+            elif [ "$kod" -ne 0 ]; then
+              echo "::error::$hedef üretilemedi (--rapor $rapor, exit $kod)"
+              echo "--failure=$hedef=TEFAS $rapor raporu üretilemedi (exit $kod)" >> /tmp/uretim_basarisizlar.txt
+            fi
+          }
+
           python 1_emtia_tahvil_maili/gunluk_mail.py --dry-run
-          python 3_tefas_fon_akis_maili/tefas_secili.py --rapor altin
-          python 3_tefas_fon_akis_maili/tefas_secili.py --rapor secili
-          python 3_tefas_fon_akis_maili/tefas_secili.py --rapor kiymetli_maden
-          python 3_tefas_fon_akis_maili/tefas_secili.py --rapor para_piyasasi
-          python 3_tefas_fon_akis_maili/tefas_secili.py --rapor katilim
-          python 3_tefas_fon_akis_maili/tefas_secili.py --rapor hisse
-          python 3_tefas_fon_akis_maili/tefas_secili.py --rapor borclanma
+          kod=$?
+          # gunluk_mail.py exit kodları (main(), 1_emtia_tahvil_maili/gunluk_mail.py
+          # satır 245-345'te doğrulandı). --dry-run yolunda yalnız 0/4 üretilebilir
+          # (2/3/5 gönderim/GitHub yayın aşamasına ait, dry-run oraya hiç ulaşmaz):
+          #   0 = zorunlu raporlar (emtia_futures.html + tefas_net_akis.html) üretildi
+          #   4 = en az biri TAMAMEN üretilemedi (generate_report/generate_tefas
+          #       False döndü) — bu tefas_secili.py'nin "kısmi kapsam"ı DEĞİL,
+          #       tam üretim hatasıdır; hangisi olduğu exit koduyla ayırt
+          #       edilemediği için ikisi de 'failed' işaretlenir.
+          if [ "$kod" -ne 0 ]; then
+            echo "::error::emtia_futures.html / tefas_net_akis.html üretilemedi (gunluk_mail.py --dry-run, exit $kod)"
+            {
+              echo "--failure=emtia_futures.html=Emtia/ABD Hazine üretimi başarısız (exit $kod)"
+              echo "--failure=tefas_net_akis.html=TEFAS toplam altın üretimi başarısız (exit $kod)"
+            } >> /tmp/uretim_basarisizlar.txt
+          fi
+
+          calistir_tefas altin tefas_altin_fon_bazinda.html
+          calistir_tefas secili tefas_secili_akis.html
+          calistir_tefas kiymetli_maden tefas_kiymetli_maden.html
+          calistir_tefas para_piyasasi tefas_para_piyasasi.html
+          calistir_tefas katilim tefas_katilim.html
+          calistir_tefas hisse tefas_hisse.html
+          calistir_tefas borclanma tefas_borclanma.html
           # gruplar türetilmiş rapor: kaynak raporların önbelleklerini toplar,
           # bu yüzden EN SON çalışmalı.
-          python 3_tefas_fon_akis_maili/tefas_secili.py --rapor gruplar
+          calistir_tefas gruplar tefas_fon_gruplari.html
+
+          if [ -s /tmp/uretim_basarisizlar.txt ]; then
+            echo "::error::$(wc -l < /tmp/uretim_basarisizlar.txt | tr -d ' ') rapor gerçek hatayla üretilemedi; bunlar dashboard'da 'failed' gösterilecek, diğer raporlar normal yayınlanır."
+          fi
       - name: Site build (index.html + report_status.json)
-        run: python build_site.py
+        run: |
+          basarisizlik_args=()
+          if [ -f /tmp/uretim_basarisizlar.txt ]; then
+            while IFS= read -r satir; do
+              [ -n "$satir" ] && basarisizlik_args+=("$satir")
+            done < /tmp/uretim_basarisizlar.txt
+          fi
+          python build_site.py "${basarisizlik_args[@]}"
       # Builder + doğrulayıcı pipeline içinde (bv-fon-dashboard'dan senkron kopya;
       # repo private olduğundan Actions'ta clone edilemez). --source-root . =
       # pipeline checkout'undaki üretilmiş HTML'ler.
