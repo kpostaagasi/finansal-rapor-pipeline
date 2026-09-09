@@ -34,7 +34,6 @@ class HtmlDocumentTests(unittest.TestCase):
 
     def test_tefas_templates_are_complete_html5_documents(self):
         paths = [
-            ROOT / "2_tefas_altin_akis" / "tefas_template.html",
             ROOT / "3_tefas_fon_akis_maili" / "secili_template.html",
         ]
         for path in paths:

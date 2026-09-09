@@ -77,10 +77,9 @@ def _read_report(source: str, data_name: str) -> tuple[dict[str, Any], dict[str,
 # Fon akışı raporları: (anahtar, başlık, üretici HTML'inin repo içi yolu).
 # Başlıklara fon/grup sayısı yazılmaz: kapsam değiştiğinde başlık sessizce
 # yanlışa döner. Gerçek sayı metadata.expected_count'ta.
-# `2_tefas_altin_akis/tefas_net_akis.html` (eski Altın Toplam raporu)
-# bilinçli olarak burada yok: aynı bilgi artık Fon Grupları raporunun
-# ALT-YAT/ALT-EMK satırlarında var. Dosya Pages sitesinde kart ve mail
-# linki olarak üretilmeye devam eder; yalnızca bu artifact'e okunmuyor.
+# Eski Altın Toplam raporu (2_tefas_altin_akis/tefas_net_akis.html) ve onu
+# üreten grup bazlı akış katmanı silindi: aynı bilgi artık Fon Grupları
+# raporunun ALT-YAT/ALT-EMK satırlarında var.
 FUND_REPORTS = (
     ("gold_by_fund", "Altın Fonları Fon Bazında Net Akış",
      ("3_tefas_fon_akis_maili", "tefas_altin_akis.html")),

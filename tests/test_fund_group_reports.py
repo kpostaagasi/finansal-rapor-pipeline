@@ -534,20 +534,6 @@ class GroupTotalTests(unittest.TestCase):
                 self.module.toplam_satirlari(cfg)
         self.assertIn("önbelleği yok", str(ctx.exception))
 
-    def test_derived_report_runs_after_its_sources(self):
-        """Grup raporu kaynak önbelleklerini okur: config sırası ne olursa olsun sonda."""
-        spec = importlib.util.spec_from_file_location(
-            "secili_mail_order_test", ROOT / "3_tefas_fon_akis_maili" / "secili_mail.py"
-        )
-        mail = importlib.util.module_from_spec(spec)
-        assert spec.loader is not None
-        spec.loader.exec_module(mail)
-        sirali = mail.rapor_configleri(
-            {"raporlar": ["gruplar", "hisse", "para_piyasasi"]}
-        )
-        self.assertEqual([r["ad"] for r in sirali][-1], "gruplar")
-        self.assertEqual({r["ad"] for r in sirali[:-1]}, {"hisse", "para_piyasasi"})
-
 
 class TuruBilinmeyenPersistenceTests(unittest.TestCase):
     """kaydet(): ara kayıt turu_bilinmeyen'e dokunmaz, son kayıt koşulsuz yazar/siler."""

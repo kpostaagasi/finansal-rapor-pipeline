@@ -21,46 +21,6 @@ class FundFlowCalculationTests(unittest.TestCase):
         cls.selected = load_module(
             "tefas_selected_flow_test", "3_tefas_fon_akis_maili/tefas_secili.py"
         )
-        cls.group = load_module(
-            "tefas_group_flow_test", "2_tefas_altin_akis/tefas_akis.py"
-        )
-
-    def test_group_flow_invalid_zero_record_is_not_counted_as_a_valid_observation(self):
-        """M1b: gecerli_gozlem yalnızca tefas_akis.py'de zayıflarsa (ör.
-        pay>0/fiyat>0 kontrolü düşerse) [0,0] kaydı geçerli bir gözlem gibi
-        sayılır. Gerçek davranışta kayıt gözlem SAYILMAZ: o gün 'missing_current'a
-        düşer, sayım 0 kalır ve grup toplamı None olur (bkz. gecerli_gozlem)."""
-        funds = {
-            "PRY": {
-                "2026-09-03": [1_000_000, 10.0],
-                "2026-09-04": [0, 0],
-                "2026-09-05": [1_000_000, 10.0],
-            },
-        }
-        dates = ["2026-09-03", "2026-09-04", "2026-09-05"]
-
-        totals, counts, issues = self.group.akislari_hesapla(funds, dates)
-
-        self.assertEqual(counts["2026-09-04"], 0)
-        self.assertIsNone(totals["2026-09-04"])
-        self.assertEqual(issues["2026-09-04"]["missing_current"], ["PRY"])
-
-    def test_group_flow_total_is_none_when_member_present_yesterday_is_absent_today(self):
-        """G: 'missing_current' TEK BAŞINA (kopukluk/bölünme olmadan) grup
-        toplamını iptal etmeli — aksi halde kalan üyenin akışı kısmi bir
-        toplam olarak sızar (bkz. akislari_hesapla docstring)."""
-        funds = {
-            "A": {"2026-09-01": [100, 1.0], "2026-09-02": [110, 1.0]},
-            "B": {"2026-09-01": [200, 1.0]},   # yalnız d1'de var, d2'de yok
-        }
-        dates = ["2026-09-01", "2026-09-02"]
-
-        totals, counts, issues = self.group.akislari_hesapla(funds, dates)
-
-        self.assertIsNone(totals["2026-09-02"])
-        self.assertEqual(issues["2026-09-02"]["missing_current"], ["B"])
-        self.assertEqual(issues["2026-09-02"]["missing_previous"], [])
-        self.assertEqual(counts["2026-09-02"], 1)
 
     def test_selected_fund_suppresses_flow_when_previous_report_date_is_missing(self):
         cache = {
@@ -126,38 +86,6 @@ class FundFlowCalculationTests(unittest.TestCase):
         self.assertEqual(flows["2026-09-04"]["ABC"], (1050 - 1000) * 10.5)
         self.assertEqual(gaps, {})
 
-    def test_group_flow_is_unavailable_when_fund_misses_previous_report_date(self):
-        funds = {
-            "PDR": {
-                "2026-04-28": [0.01, 9],
-                "2026-06-05": [300_000_000, 1.002864],
-            },
-            "OTHER": {
-                "2026-06-04": [100, 1],
-                "2026-06-05": [100, 1],
-            },
-        }
-        dates = ["2026-04-28", "2026-06-04", "2026-06-05"]
-
-        totals, counts, issues = self.group.akislari_hesapla(funds, dates)
-
-        self.assertIsNone(totals["2026-06-05"])
-        self.assertEqual(counts["2026-06-05"], 2)
-        self.assertEqual(issues["2026-06-05"]["missing_previous"], ["PDR"])
-
-    def test_group_flow_uses_cached_record_at_incremental_window_boundary(self):
-        funds = {"AAA": {"2026-06-04": [100, 2], "2026-06-05": [110, 3]}}
-
-        totals, counts, issues = self.group.akislari_hesapla(
-            funds, ["2026-06-04", "2026-06-05"]
-        )
-
-        self.assertEqual(totals["2026-06-05"], 30)
-        self.assertEqual(counts["2026-06-05"], 1)
-        self.assertEqual(
-            issues["2026-06-05"], {"missing_current": [], "missing_previous": []}
-        )
-
     def test_report_cells_separate_launch_days_from_uncomputable_gaps(self):
         """null yalnızca "hesaplanamadı" demek; piyasaya çıkış öncesi 0 katkıdır.
 
@@ -210,9 +138,8 @@ class FundFlowCalculationTests(unittest.TestCase):
     def test_pay_bolunmesi_boundary_cases(self):
         """pay_bolunmesi: pay oranı eşiği + değer toleransı sınır vakaları.
 
-        İki üreticide (tefas_secili.py, tefas_akis.py) birebir aynı davranış
-        beklenir — regresyon: TI2/GA1 gibi gerçek bölünmeler yanlış negatif,
-        sıradan büyük alım/satımlar yanlış pozitif vermemeli.
+        Regresyon: TI2/GA1 gibi gerçek bölünmeler yanlış negatif, sıradan
+        büyük alım/satımlar yanlış pozitif vermemeli.
         """
         vakalar = [
             ("TI2 gerçek bölünme (pay x9971, fiyat /9834)",
@@ -229,9 +156,8 @@ class FundFlowCalculationTests(unittest.TestCase):
              (1000, 10.0), (10_000, 1.1), False),
         ]
         for ad, onceki, simdi, beklenen in vakalar:
-            for mod_ad, mod in (("secili", self.selected), ("akis", self.group)):
-                with self.subTest(vaka=ad, modul=mod_ad):
-                    self.assertEqual(mod.pay_bolunmesi(onceki, simdi), beklenen)
+            with self.subTest(vaka=ad):
+                self.assertEqual(self.selected.pay_bolunmesi(onceki, simdi), beklenen)
 
     def test_selected_fund_unit_split_day_flow_is_not_published(self):
         """Regresyon: eski davranışta pay bölünmesi günü hesaplanabilir bir
@@ -258,29 +184,6 @@ class FundFlowCalculationTests(unittest.TestCase):
              "previous_available": "2026-09-02"},
         )
         self.assertEqual(flows["2026-09-04"]["SPL"], (11_050 - 11_000) * 0.1)
-
-    def test_group_flow_total_is_none_on_member_unit_split_day(self):
-        """Bir üyenin pay bölünmesi grup toplamını şişirmemeli: bölünme günü
-        toplam None olur, diğer günler etkilenmez (bkz. akislari_hesapla)."""
-        funds = {
-            "SPL": {
-                "2026-09-01": [100, 10.0],
-                "2026-09-02": [110, 10.0],
-                "2026-09-03": [11_000, 0.1],
-            },
-            "OTHER": {
-                "2026-09-01": [100, 1.0],
-                "2026-09-02": [105, 1.0],
-                "2026-09-03": [110, 1.0],
-            },
-        }
-        dates = ["2026-09-01", "2026-09-02", "2026-09-03"]
-
-        totals, counts, issues = self.group.akislari_hesapla(funds, dates)
-
-        self.assertEqual(totals["2026-09-02"], (110 - 100) * 10.0 + (105 - 100) * 1.0)
-        self.assertIsNone(totals["2026-09-03"])
-        self.assertEqual(counts["2026-09-03"], 2)
 
     def test_report_meta_includes_split_codes_and_note(self):
         """report_meta'ya split_codes/split_count eklenir, eksik notuna Contract

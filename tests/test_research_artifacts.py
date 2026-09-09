@@ -140,17 +140,6 @@ class ResearchArtifactTests(unittest.TestCase):
             module.build_fund_artifact(sources)
         self.assertIn("zorunlu rapor kaynağı eksik", str(ctx.exception))
 
-    def test_fund_reports_table_dropped_the_gold_total_chain(self):
-        """`gold_total` (Altın Toplam) research zincirinden tamamen kaldırıldı;
-        FUND_REPORTS'a `2_tefas_altin_akis/` altından bir üretici tekrar
-        eklenirse (grup serisi geri sızarsa) bu test yakalar."""
-        module = load_module()
-        keys = [key for key, _, _ in module.FUND_REPORTS]
-        self.assertNotIn("gold_total", keys)
-        self.assertEqual(len(module.FUND_REPORTS), 8)
-        for _, _, (klasor, _dosya) in module.FUND_REPORTS:
-            self.assertNotEqual(klasor, "2_tefas_altin_akis")
-
     def test_group_rows_keep_their_unit_label(self):
         module = load_module()
         artifact = build(module, {"TLY": [1.0, 2.0]})

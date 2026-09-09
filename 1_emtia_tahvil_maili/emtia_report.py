@@ -3,7 +3,7 @@
 Kaynaklar: Yahoo Finance (vadeli kontratlar), US Treasury (getiri egrisi).
 Cikti: emtia_futures.html (ayni dizine).
 """
-import datetime, json, math, os, ssl, sys, urllib.error, urllib.request
+import datetime, json, math, os, ssl, sys, time, urllib.request
 from numbers import Real
 
 import certifi
@@ -42,7 +42,7 @@ def gen_contracts(root, suffix, cycle, count):
 def gecerli_fiyat(deger):
     """Yahoo kotasyonu geçerli bir gözlem mi?
 
-    TEFAS tarafındaki eşlenik hata (bkz. 2_tefas_altin_akis/tefas_akis.py
+    TEFAS tarafındaki eşlenik hata (bkz. 3_tefas_fon_akis_maili/tefas_secili.py
     gecerli_gozlem / F1): bozuk bir değer matematiksel olarak geçerliymiş
     gibi görünüp fail-closed kontrollerini atlatıyordu — sıfır fiyat HTML
     tablosunda "+∞" değişim yüzdesi üretiyor, string tip ise sonraki
@@ -107,7 +107,7 @@ def build_data():
     for c in COMMODITIES:
         contracts = gen_contracts(c["root"], c["suffix"], c["cycle"], c["count"])
         total_requested += len(contracts)
-        pts, quote_times, excluded_stale_quotes = [], [], []
+        pts, excluded_stale_quotes = [], []
         found_symbols = set()
         for sym, yy, mo in contracts:
             quote = fetch_quote(sym)
@@ -123,7 +123,6 @@ def build_data():
                     all_stale.append({"commodity": c["title"], **stale_quote})
                     continue
                 if quote["timestamp"]:
-                    quote_times.append(quote["timestamp"])
                     data_dates.append(datetime.datetime.fromtimestamp(
                         quote["timestamp"], tz=datetime.timezone.utc
                     ).date())
@@ -143,8 +142,6 @@ def build_data():
             "found_count": len(pts),
             "missing_symbols": missing_symbols,
             "excluded_stale_quotes": excluded_stale_quotes,
-            "quote_time_min": min(quote_times) if quote_times else None,
-            "quote_time_max": max(quote_times) if quote_times else None,
         }
         if missing_symbols:
             data["warnings"].append(f"{c['title']}: {len(pts)}/{len(contracts)}")
@@ -433,11 +430,33 @@ let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTime
 </html>
 """
 
-if __name__ == "__main__":
-    data = build_data()
+def main():
+    """Raporu üretir; kısmi veriyle YAZMAZ ve sıfırdışı kodla çıkar.
+
+    Eşik: en az 5 emtia eğrisi + faiz eğrisi. Yahoo/Hazine geçici hatalarında
+    3 deneme yapılır; hâlâ eşik altındaysa HTML dosyaya hiç yazılmaz, son
+    bilinen iyi hali kalır ve dashboard o kartı 'failed' gösterir.
+    """
+    for deneme in range(1, 4):
+        data = build_data()
+        if len(data["curves"]) >= 5 and data["rates"]:
+            break
+        print(
+            f"UYARI: deneme {deneme}/3 yetersiz — {len(data['curves'])} emtia, "
+            f"faiz: {'var' if data['rates'] else 'YOK'}",
+            file=sys.stderr,
+        )
+        if deneme == 3:
+            return 1
+        time.sleep(90)
     out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "emtia_futures.html")
     with open(out, "w") as f:
         f.write(HTML.replace(
             "__REPORT_META__", json.dumps(data["report_meta"], ensure_ascii=False)
         ).replace("__DATA__", json.dumps(data, ensure_ascii=False)))
     print(f"OK: {out} — {len(data['curves'])} emtia, faiz: {'var' if data['rates'] else 'YOK'}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

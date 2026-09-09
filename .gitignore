@@ -6,14 +6,11 @@ __pycache__/
 *.py[cod]
 .venv/
 
-# Yerel kimlik ve dağıtım ayarları
-**/mail_config.json
-
 # Üretilen raporlar, cache ve durum dosyaları
 site/
+artifacts/
+Output/
 1_emtia_tahvil_maili/emtia_futures.html
-1_emtia_tahvil_maili/output/
-2_tefas_altin_akis/tefas_net_akis.html
 3_tefas_fon_akis_maili/tefas_altin_akis.html
 3_tefas_fon_akis_maili/tefas_secili_akis.html
 3_tefas_fon_akis_maili/tefas_gruplar_akis.html
@@ -22,10 +19,7 @@ site/
 3_tefas_fon_akis_maili/tefas_katilim_akis.html
 3_tefas_fon_akis_maili/tefas_hisse_akis.html
 3_tefas_fon_akis_maili/tefas_borclanma_akis.html
-3_tefas_fon_akis_maili/output/
 
 # Hermes yerel plan dosyaları
 .hermes/
 
-# Mail config yedekleri (gerçek değer içerir)
-**/mail_config.json.test-*

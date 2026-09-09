@@ -64,22 +64,15 @@ jobs:
             fi
           }
 
-          python 1_emtia_tahvil_maili/gunluk_mail.py --dry-run
+          python 1_emtia_tahvil_maili/emtia_report.py
           kod=$?
-          # gunluk_mail.py exit kodları (main(), 1_emtia_tahvil_maili/gunluk_mail.py
-          # satır 245-345'te doğrulandı). --dry-run yolunda yalnız 0/4 üretilebilir
-          # (2/3/5 gönderim/GitHub yayın aşamasına ait, dry-run oraya hiç ulaşmaz):
-          #   0 = zorunlu raporlar (emtia_futures.html + tefas_net_akis.html) üretildi
-          #   4 = en az biri TAMAMEN üretilemedi (generate_report/generate_tefas
-          #       False döndü) — bu tefas_secili.py'nin "kısmi kapsam"ı DEĞİL,
-          #       tam üretim hatasıdır; hangisi olduğu exit koduyla ayırt
-          #       edilemediği için ikisi de 'failed' işaretlenir.
+          # emtia_report.py main() (1_emtia_tahvil_maili/emtia_report.py) eşiği
+          # kendi içinde uygular: en az 5 emtia eğrisi + faiz eğrisi yoksa 3
+          # deneme sonunda HTML'i YAZMADAN 1 ile çıkar (son bilinen iyi hali
+          # korunur). 0 = emtia_futures.html tazelendi.
           if [ "$kod" -ne 0 ]; then
-            echo "::error::emtia_futures.html / tefas_net_akis.html üretilemedi (gunluk_mail.py --dry-run, exit $kod)"
-            {
-              echo "--failure=emtia_futures.html=Emtia/ABD Hazine üretimi başarısız (exit $kod)"
-              echo "--failure=tefas_net_akis.html=TEFAS toplam altın üretimi başarısız (exit $kod)"
-            } >> /tmp/uretim_basarisizlar.txt
+            echo "::error::emtia_futures.html üretilemedi (emtia_report.py, exit $kod)"
+            echo "--failure=emtia_futures.html=Emtia/ABD Hazine üretimi başarısız (exit $kod)" >> /tmp/uretim_basarisizlar.txt
           fi
 
           calistir_tefas altin tefas_altin_fon_bazinda.html

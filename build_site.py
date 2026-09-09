@@ -23,12 +23,6 @@ REPORTS = (
         "target": "emtia_futures.html",
     },
     {
-        "title": "TEFAS Altın Fonlarına Net Akış",
-        "description": "Altın yatırım ve emeklilik fonlarının grup bazında günlük, haftalık ve aylık net akışı.",
-        "source": "2_tefas_altin_akis/tefas_net_akis.html",
-        "target": "tefas_net_akis.html",
-    },
-    {
         "title": "TEFAS Altın Fonları — Fon Bazında",
         "description": "Altın yatırım ve emeklilik fonlarının ayrı ayrı net giriş ve çıkışları.",
         "source": "3_tefas_fon_akis_maili/tefas_altin_akis.html",
@@ -123,8 +117,6 @@ def _status(meta: dict, now: dt.date) -> str:
     if (meta.get("found_count") != meta.get("expected_count") or meta.get("missing")
             or meta.get("uncomputed_count") or meta.get("recent_gap_count")):
         return "partial"
-    if meta.get("stale_quotes"):
-        return "stale_quotes"
     return "ready"
 
 
@@ -154,7 +146,6 @@ def _card(report: dict[str, str], ready: bool, updated: str | None,
         status_label = {
             "ready": "Güncel",
             "partial": "Eksik veri",
-            "stale_quotes": "Seyrek fiyat",
             "stale": "Veri güncel değil",
             "failed": "Başarısız",
         }.get(state, "Durum bilinmiyor")
@@ -244,7 +235,7 @@ def _index(cards: str) -> str:
     .card h2 {{ margin:14px 0 8px; font-size:19px; }}
     .card p {{ min-height:66px; color:var(--muted); line-height:1.5; }}
     .status {{ font-size:12px; font-weight:650; }}
-    .status.ready {{ color:var(--ok); }} .status.partial, .status.stale_quotes, .status.stale, .status.failed, .status.missing {{ color:var(--warn); }}
+    .status.ready {{ color:var(--ok); }} .status.partial, .status.stale, .status.failed, .status.missing {{ color:var(--warn); }}
     .meta {{ min-height:106px; margin:12px 0 0; padding-left:18px; color:var(--muted); font-size:12px; line-height:1.55; }}
     .button {{ display:inline-block; margin-top:10px; padding:9px 13px; border-radius:8px; background:var(--accent); color:#fff; text-decoration:none; font-weight:650; }}
     .button.disabled {{ background:#e4e7ec; color:#667085; }}

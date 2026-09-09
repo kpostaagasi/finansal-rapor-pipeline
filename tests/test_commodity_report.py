@@ -4,6 +4,7 @@ import re
 import shutil
 import ssl
 import subprocess
+import tempfile
 import unittest
 import urllib.error
 from pathlib import Path
@@ -134,8 +135,6 @@ class CommodityReportTests(unittest.TestCase):
         self.assertEqual(curve["requested_count"], 4)
         self.assertEqual(curve["found_count"], 3)
         self.assertEqual(curve["missing_symbols"], ["TTF30"])
-        self.assertEqual(curve["quote_time_min"], 100)
-        self.assertEqual(curve["quote_time_max"], 300)
         self.assertIn("Test Emtia: 3/4", data["warnings"])
         meta = data["report_meta"]
         self.assertEqual(meta["expected_count"], 4)
@@ -203,7 +202,7 @@ class CommodityReportTests(unittest.TestCase):
         """Regresyon: 0/negatif fiyat "geçerli gözlem" sayılıp HTML tablosunda
         sıfıra bölme yüzünden "+∞" değişim yüzdesi üretiyordu; string tip ise
         sonraki round() çağrısını TypeError ile TÜM raporu çökertiyordu.
-        TEFAS tarafındaki eşlenik hata: 2_tefas_altin_akis/tefas_akis.py
+        TEFAS tarafındaki eşlenik hata: 3_tefas_fon_akis_maili/tefas_secili.py
         gecerli_gozlem (F1)."""
         invalid_prices = [0.0, -5.25, "N/A", True, float("nan"), float("inf"), None]
         for price in invalid_prices:
@@ -487,6 +486,48 @@ class CommodityReportTests(unittest.TestCase):
         davranışsal test tercih edilir."""
         badge_expr = _extract_badge_expression(self.module.HTML)
         self.assertTrue(badge_expr.startswith("!complete ? 'Kaynakta eksik' :"))
+    def test_main_writes_nothing_and_returns_1_when_curve_count_is_below_threshold(self):
+        """emtia_report.main(): eşik (>=5 emtia eğrisi + faiz eğrisi) altında
+        kalan veriyle HTML dosyası YAZILMAZ; 3 denemenin tümü yetersiz kalırsa
+        1 döner. time.sleep patch'lenir, aksi halde deneme başına 90sn bekler."""
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            module.__file__ = str(Path(tmp) / "emtia_report.py")
+            out_path = Path(tmp) / "emtia_futures.html"
+            insufficient = {
+                "curves": [{"title": f"C{i}"} for i in range(3)],
+                "rates": {"date": "01/02/2027", "points": []},
+                "warnings": [],
+                "report_meta": {},
+            }
+            with (
+                patch.object(module, "build_data", return_value=insufficient),
+                patch.object(module.time, "sleep", return_value=None),
+            ):
+                code = module.main()
+            self.assertEqual(code, 1)
+            self.assertFalse(out_path.exists())
+
+    def test_main_writes_report_and_returns_0_when_threshold_is_met(self):
+        """Eşik (>=5 emtia eğrisi + faiz eğrisi) karşılanınca ilk denemede
+        HTML dosyası yazılır ve 0 döner."""
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            module.__file__ = str(Path(tmp) / "emtia_report.py")
+            out_path = Path(tmp) / "emtia_futures.html"
+            sufficient = {
+                "curves": [{"title": f"C{i}"} for i in range(5)],
+                "rates": {"date": "01/02/2027", "points": []},
+                "warnings": [],
+                "report_meta": {"expected_count": 5, "found_count": 5},
+            }
+            with (
+                patch.object(module, "build_data", return_value=sufficient),
+                patch.object(module.time, "sleep", return_value=None),
+            ):
+                code = module.main()
+            self.assertEqual(code, 0)
+            self.assertTrue(out_path.exists())
 
 
 if __name__ == "__main__":

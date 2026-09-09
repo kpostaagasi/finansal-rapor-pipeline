@@ -4,10 +4,10 @@ Evren bir kod listesiyle değil, unvan kuralıyla belirlendiği için TEFAS'a ç
 yeni bir fon rapora kendiliğinden girer. Bu istenen davranış; ancak kimin
 girdiği/çıktığı gözden geçirilmeden değişmemeli. Buradaki testler:
 
-  1. unvan kuralının iki üreticide de aynı kararı verdiğini,
-  2. önbellekteki gerçek evrenin incelenmiş kod kümesiyle örtüştüğünü,
-  3. emeklilik tarafındaki elle tutulan listenin, TEFAS'tan her çalışmada
-     tazelenen evrenden ayrışmadığını
+  1. unvan kuralının doğru kararı verdiğini,
+  2. önbellekteki gerçek evrenin (yatırım + emeklilik) incelenmiş kod
+     kümesiyle örtüştüğünü,
+  3. altın evreninin kıymetli maden raporunun bir alt kümesi olduğunu
 
 doğrular. Kural bilinçli değiştirildiğinde ya da yeni bir fon incelendiğinde
 aşağıdaki kümeler güncellenir.
@@ -20,12 +20,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-GROUP_MODULE = ROOT / "2_tefas_altin_akis" / "tefas_akis.py"
 SELECTED_MODULE = ROOT / "3_tefas_fon_akis_maili" / "tefas_secili.py"
-GROUP_CACHE = ROOT / "2_tefas_altin_akis" / "fon_veri.json"
-SELECTED_CACHE = ROOT / "3_tefas_fon_akis_maili" / "altin_veri.json"
 PRECIOUS_CACHE = ROOT / "3_tefas_fon_akis_maili" / "kiymetli_veri.json"
-PENSION_LIST = ROOT / "2_tefas_altin_akis" / "eyf_fonlar.json"
 
 # 04.09.2026'da TEFAS unvan listesi üzerinden gözden geçirilmiş yatırım fonu
 # evreni. GLL (GOLDEN GLOBAL PORTFÖY ALTIN KATILIM FONU) 20.08.2026'da
@@ -77,80 +73,56 @@ def load_module(name: str, path: Path):
 def cached_codes(cache: Path) -> dict[str, set[str]]:
     """Önbellekteki evreni {"YAT": {...}, "EMK": {...}} biçiminde döndürür."""
     data = json.loads(cache.read_text(encoding="utf-8"))
-    if "tip" in data:  # fon bazında rapor önbelleği
-        return {
-            tip: {kod for kod, t in data["tip"].items() if t == tip}
-            for tip in ("YAT", "EMK")
-        }
-    return {"YAT": set(data["yf"]), "EMK": set(data["eyf"])}
+    return {
+        tip: {kod for kod, t in data["tip"].items() if t == tip}
+        for tip in ("YAT", "EMK")
+    }
 
 
 class GoldTitleRuleTests(unittest.TestCase):
-    def test_both_engines_apply_the_same_title_rule(self):
-        group = load_module("gold_rule_group", GROUP_MODULE)
+    def test_title_rule_matches_reviewed_examples(self):
         selected = load_module("gold_rule_selected", SELECTED_MODULE)
         for title, expected in TITLE_CASES:
             with self.subTest(title=title):
-                self.assertEqual(group.altin_fonu(title), expected)
                 self.assertEqual(selected.altin_unvani(title), expected)
 
 
 class GoldUniverseTests(unittest.TestCase):
-    def assert_investment_universe(self, cache: Path):
-        codes = cached_codes(cache)["YAT"]
+    @classmethod
+    def setUpClass(cls):
+        # tek kaynak: raporlar/altin.json üzerinden tefas_secili.py'nin
+        # kendi çözdüğü önbellek yolu (hardcode edilmiş bir yol değil).
+        selected = load_module("gold_universe_selected", SELECTED_MODULE)
+        cls.cache = Path(selected.rapor_yukle("altin")["cache"])
+
+    def test_investment_universe_matches_the_reviewed_fund_set(self):
+        codes = cached_codes(self.cache)["YAT"]
         added = sorted(codes - REVIEWED_INVESTMENT_FUNDS)
         dropped = sorted(REVIEWED_INVESTMENT_FUNDS - codes)
         self.assertEqual(
             (added, dropped),
             ([], []),
-            f"{cache.name}: altın fon evreni değişti — yeni {added}, düşen {dropped}. "
+            f"altın fon evreni değişti — yeni {added}, düşen {dropped}. "
             "Unvanları TEFAS'ta doğrula, sonra REVIEWED_INVESTMENT_FUNDS ve "
             "README'deki fon sayısını güncelle.",
         )
 
-    def test_group_report_universe_matches_the_reviewed_fund_set(self):
-        self.assert_investment_universe(GROUP_CACHE)
-
-    def test_selected_report_universe_matches_the_reviewed_fund_set(self):
-        self.assert_investment_universe(SELECTED_CACHE)
-
-    def test_both_reports_cover_the_same_funds(self):
-        group = cached_codes(GROUP_CACHE)
-        selected = cached_codes(SELECTED_CACHE)
-        self.assertEqual(group["YAT"], selected["YAT"])
-        self.assertEqual(group["EMK"], selected["EMK"])
-
-    def test_pension_list_matches_the_refreshed_pension_universe(self):
-        """Emeklilik evreni 2. raporda elle, 3. raporda TEFAS'tan gelir.
-
-        Yeni bir altın emeklilik fonu açıldığında fon bazında rapor onu
-        kendiliğinden alır, grup raporu ise elle güncellenene kadar almaz. Bu
-        test o ayrışmayı ilk üretimde görünür kılar.
-        """
-        listed = set(json.loads(PENSION_LIST.read_text(encoding="utf-8"))["fonlar"])
-        refreshed = cached_codes(SELECTED_CACHE)["EMK"]
-        missing = sorted(refreshed - listed)
-        stale = sorted(listed - refreshed)
-        self.assertEqual(
-            (missing, stale),
-            ([], []),
-            f"eyf_fonlar.json güncel değil — eksik {missing}, fazla {stale}. "
-            "TEFAS'ta fonTurAciklama'sı Altın (Katılım) Fonu olan emeklilik "
-            "fonlarını yenileyip --bootstrap ile seriyi yeniden kur.",
-        )
-
     def test_pension_universe_matches_the_reviewed_fund_set(self):
-        for cache in (GROUP_CACHE, SELECTED_CACHE):
-            codes = cached_codes(cache)["EMK"]
-            with self.subTest(cache=cache.name):
-                self.assertEqual(
-                    (sorted(codes - REVIEWED_PENSION_FUNDS),
-                     sorted(REVIEWED_PENSION_FUNDS - codes)),
-                    ([], []),
-                    f"{cache.name}: altın emeklilik evreni değişti. Unvanı ve "
-                    "fon türünü TEFAS'ta doğrula, sonra REVIEWED_PENSION_FUNDS, "
-                    "eyf_fonlar.json ve README'yi güncelle.",
-                )
+        """Emeklilik evreni artık tek üreticiden (tefas_secili.py) gelir:
+
+        her çalışmada TEFAS'tan tazelenen `altin_veri.json` önbelleği,
+        burada elle gözden geçirilmiş REVIEWED_PENSION_FUNDS'tan
+        ayrışmamalı."""
+        codes = cached_codes(self.cache)["EMK"]
+        added = sorted(codes - REVIEWED_PENSION_FUNDS)
+        dropped = sorted(REVIEWED_PENSION_FUNDS - codes)
+        self.assertEqual(
+            (added, dropped),
+            ([], []),
+            f"altın emeklilik evreni değişti — yeni {added}, düşen {dropped}. "
+            "Unvanı ve fon türünü TEFAS'ta doğrula, sonra REVIEWED_PENSION_FUNDS "
+            "ve README'yi güncelle.",
+        )
 
     def test_gold_universe_is_contained_in_the_precious_metals_report(self):
         """Altın fonları kıymetli maden raporunun alt kümesi olmalı.
@@ -160,7 +132,7 @@ class GoldUniverseTests(unittest.TestCase):
         yüzden şemsiye türüne değil tür ∪ unvan kuralına dayanır. Aksi halde
         "kıymetli maden" raporu kendi içindeki altın fonlarını kaçırıyordu.
         """
-        altin = cached_codes(GROUP_CACHE)
+        altin = cached_codes(self.cache)
         kiymetli = cached_codes(PRECIOUS_CACHE)
         for tip in ("YAT", "EMK"):
             with self.subTest(tip=tip):

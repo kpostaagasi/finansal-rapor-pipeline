@@ -22,12 +22,12 @@ class BuildSiteTests(unittest.TestCase):
     def test_failure_arguments_are_parsed_without_losing_message_spaces(self):
         module = load_module()
         failures = module._parse_failures([
-            "--failure=tefas_net_akis.html=TEFAS veri üretimi başarısız",
+            "--failure=tefas_altin_fon_bazinda.html=TEFAS veri üretimi başarısız",
             "--ignored",
         ])
         self.assertEqual(
             failures,
-            {"tefas_net_akis.html": "TEFAS veri üretimi başarısız"},
+            {"tefas_altin_fon_bazinda.html": "TEFAS veri üretimi başarısız"},
         )
 
     def test_build_site_copies_ready_reports_and_marks_missing_ones(self):
@@ -35,7 +35,7 @@ class BuildSiteTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             emtia = root / "1_emtia_tahvil_maili" / "emtia_futures.html"
-            altin = root / "2_tefas_altin_akis" / "tefas_net_akis.html"
+            altin = root / "3_tefas_fon_akis_maili" / "tefas_altin_akis.html"
             emtia.parent.mkdir(parents=True)
             altin.parent.mkdir(parents=True)
             emtia.write_text("<html>emtia</html>", encoding="utf-8")
@@ -48,7 +48,7 @@ class BuildSiteTests(unittest.TestCase):
             # Rapor sayısı büyüdükçe kaymasın: hazır olmayan her kaynak eksik sayılır.
             self.assertEqual(result["missing"], len(module.REPORTS) - 2)
             self.assertEqual((site / "emtia_futures.html").read_text(), "<html>emtia</html>")
-            self.assertEqual((site / "tefas_net_akis.html").read_text(), "<html>altin</html>")
+            self.assertEqual((site / "tefas_altin_fon_bazinda.html").read_text(), "<html>altin</html>")
             index = (site / "index.html").read_text(encoding="utf-8")
             self.assertIn("Emtia Futures ve ABD Hazine Eğrisi", index)
             self.assertIn('href="emtia_futures.html"', index)
@@ -81,7 +81,7 @@ class BuildSiteTests(unittest.TestCase):
             root = Path(tmp)
             current = dt.date(2026, 8, 17)
             emtia = root / "1_emtia_tahvil_maili" / "emtia_futures.html"
-            altin = root / "2_tefas_altin_akis" / "tefas_net_akis.html"
+            altin = root / "3_tefas_fon_akis_maili" / "tefas_altin_akis.html"
             emtia.parent.mkdir(parents=True)
             altin.parent.mkdir(parents=True)
             emtia_meta = {
@@ -124,13 +124,13 @@ class BuildSiteTests(unittest.TestCase):
 
             statuses = json.loads((site / "report_status.json").read_text())
             self.assertEqual(statuses["emtia_futures.html"]["status"], "partial")
-            self.assertEqual(statuses["tefas_net_akis.html"]["status"], "stale")
+            self.assertEqual(statuses["tefas_altin_fon_bazinda.html"]["status"], "stale")
 
     def test_dashboard_marks_preserved_report_failed_when_generation_fails(self):
         module = load_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            report = root / "2_tefas_altin_akis" / "tefas_net_akis.html"
+            report = root / "3_tefas_fon_akis_maili" / "tefas_altin_akis.html"
             report.parent.mkdir(parents=True)
             report.write_text("<html>last known good</html>", encoding="utf-8")
 
@@ -138,17 +138,17 @@ class BuildSiteTests(unittest.TestCase):
             module.build_site(
                 root=root,
                 site_dir=site,
-                failures={"tefas_net_akis.html": "TEFAS veri üretimi başarısız"},
+                failures={"tefas_altin_fon_bazinda.html": "TEFAS veri üretimi başarısız"},
             )
 
             index = (site / "index.html").read_text(encoding="utf-8")
             self.assertIn("Başarısız", index)
             self.assertIn("TEFAS veri üretimi başarısız", index)
-            self.assertIn('href="tefas_net_akis.html"', index)
+            self.assertIn('href="tefas_altin_fon_bazinda.html"', index)
             statuses = json.loads((site / "report_status.json").read_text())
-            self.assertEqual(statuses["tefas_net_akis.html"]["status"], "failed")
+            self.assertEqual(statuses["tefas_altin_fon_bazinda.html"]["status"], "failed")
             self.assertEqual(
-                statuses["tefas_net_akis.html"]["error_message"],
+                statuses["tefas_altin_fon_bazinda.html"]["error_message"],
                 "TEFAS veri üretimi başarısız",
             )
 

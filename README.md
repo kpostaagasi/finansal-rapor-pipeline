@@ -1,9 +1,10 @@
-# Otomatik Rapor ve Mail Otomasyonları
+# Otomatik Rapor Üretimi ve Yayını
 
-Yahoo Finance, ABD Hazinesi ve TEFAS verisinden toplam 10 rapor sayfası üreten
+Yahoo Finance, ABD Hazinesi ve TEFAS verisinden toplam 9 rapor sayfası üreten
 otomasyonların kaynak kodu (yayın adları `build_site.py`'deki `REPORTS`
-tablosunda tanımlı, tek kaynak). Mail ve yayın birbirinden bağımsız güvenlik
-kapılarıyla kapalı tutulabilir.
+tablosunda tanımlı, tek kaynak). Raporlar GitHub Actions'ta üretilip
+`kpostaagasi/finansal-raporlar` deposuna push edilerek GitHub Pages'te
+yayınlanır.
 
 Proje Python 3.14 venv'iyle doğrulanmıştır. Kurulum:
 
@@ -13,54 +14,14 @@ env -u PYTHONPATH .venv/bin/python -m pip install -r requirements.txt
 env -u PYTHONPATH .venv/bin/python verify_runtime.py
 ```
 
-Üçüncü parti bağımlılık yalnızca `requests`, `openpyxl`, `certifi` — gerisi
-standart kütüphane.
-
----
-
-## Kurulum: üç ortak ayar
-
-### 1. SMTP şifresi
-
-Şifreler kodda tutulmuyor, macOS Keychain'den okunuyor. Gmail için normal şifre
-değil **16 haneli App Password** gerekir:
-
-```bash
-security add-generic-password -s model_portfoy_smtp -a gonderen@example.com -w 'APP_PASSWORD'
-```
-
-Keychain servis adı config'lerdeki `keychain_service` alanıyla eşleşmeli.
-macOS dışında çalıştıracaksanız scriptlerdeki `security find-generic-password`
-çağrısını ortam değişkeni okumasıyla değiştirmeniz yeterli.
-
-### 2. Alıcılar ve adresler
-
-`mail_config.ornek.json` dosyalarını `mail_config.json` olarak kopyalayıp
-doldurun. `KULLANICI/DEPO` ve `/MUTLAK/YOL/...` yer tutucularını kendi
-değerlerinizle değiştirin. İlk kurulumda `allow_publish` ve `allow_send`
-değerlerini `false` bırakın; doğrulama bittikten sonra ayrı ayrı açın.
-
-### 3. Rapor yayınlama (isteğe bağlı)
-
-1. ve 3. otomasyon üretilen HTML'i GitHub Pages'e yükleyip mailde link olarak
-gönderiyor — alıcı ek indirmeden tarayıcıda açabiliyor. Bunun için
-[`gh` CLI](https://cli.github.com) kurulu ve `gh auth login` yapılmış olmalı.
-Script `gh` ikilisini sistem `PATH`'inden bulur; bulunamazsa eski
-`~/.local/bin/gh` yoluna bakar.
-
-Link istemiyorsanız `--no-push` ile çalıştırın, raporlar yalnızca yerelde üretilir.
+Üçüncü parti bağımlılık yalnızca `requests` ve `certifi` — gerisi standart
+kütüphane.
 
 ---
 
 ## Otomasyonlar
 
-Hepsinde ortak bayraklar: `--dry-run` (yerelde rapor üretir; yayın ve mail yok),
-`--example` (yalnızca gönderene örnek mail), `--force` (günlük kilidi yok sayar),
-`--no-push` (yerelde üretir; yayın ve mail yok).
-
 ### 1_emtia_tahvil_maili
-
-`gunluk_mail.py` günlük akışı yönetir: raporları üretir → Pages'e yükler → mailler.
 
 `emtia_report.py` veriyi çekip tek dosyalık HTML üretir: 6 emtianın vadeli işlem
 eğrisi (WTI `CL`, altın `GC`, gümüş `SI`, platin `PL`, bakır `HG`, alüminyum `ALI`
@@ -69,74 +30,53 @@ eğrisi (WTI `CL`, altın `GC`, gümüş `SI`, platin `PL`, bakır `HG`, alümin
 5 günden eski fiyatlı kontratlar (vadesi geçmiş/likiditesiz) eğriden düşülür.
 
 ```bash
-env -u PYTHONPATH .venv/bin/python 1_emtia_tahvil_maili/gunluk_mail.py --dry-run
+env -u PYTHONPATH .venv/bin/python 1_emtia_tahvil_maili/emtia_report.py
 ```
 
-Rapor üretimi veya Pages yayını başarısız olursa eski rapor korunur, dashboard hata
-durumunu gösterir ve mail **gönderilmez**.
+`main()` fail-closed bir eşik uygular: en az 5 emtia eğrisi ve faiz eğrisi
+yoksa 3 deneme sonunda HTML'i **yazmadan** `1` ile çıkar — eski rapor korunur
+ve dashboard o kartı `Başarısız` gösterir.
 
-### 2_tefas_altin_akis — 1. maddedeki mailin üçüncü linki
+### 3_tefas_fon_akis_maili
 
-`tefas_akis.py` altın fonlarına net giriş/çıkışı hesaplar.
+`tefas_secili.py` tüm TEFAS raporlarının tek motoru; rapor tanımları
+`raporlar/*.json` içinde:
+
+```bash
+env -u PYTHONPATH .venv/bin/python 3_tefas_fon_akis_maili/tefas_secili.py --rapor altin --bootstrap
+env -u PYTHONPATH .venv/bin/python 3_tefas_fon_akis_maili/tefas_secili.py --rapor secili
+env -u PYTHONPATH .venv/bin/python 3_tefas_fon_akis_maili/tefas_secili.py --rapor gruplar --no-fetch
+env -u PYTHONPATH .venv/bin/python 3_tefas_fon_akis_maili/tefas_secili.py --rapor altin --yerel-kopya
+```
 
 **Hesap:** net akış = (o günün `tedPaySayisi` − önceki işlem gününün
-`tedPaySayisi`) × **o günün** fiyatı; fon bazında hesaplanıp gruplanır. Fiyat
-hareketinden gelen büyüklük değişimi hesaba girmez.
+`tedPaySayisi`) × **o günün** fiyatı; fon bazında hesaplanır, grup raporunda
+gruplanır. Fiyat hareketinden gelen büyüklük değişimi hesaba girmez.
 
 “Önceki işlem günü”, rapor evrenindeki bir önceki gerçek TEFAS veri tarihidir.
 Bir fon bu iki tarihten birinde gözlem vermediyse akış `0` yapılmaz, ileri taşınmaz
 ve sonraki güne yığılmaz; hücre **hesaplanamadı** olarak bırakılır. Grup veya dönem
-toplamı eksik hücre içeriyorsa kısmi tutar tam sonuç gibi gösterilmez. Son veri
-tarihinde eksik ya da hesaplanamayan fon varsa üretici hata koduyla çıkar ve
-yayın/mail zinciri durur.
+toplamı eksik hücre içeriyorsa kısmi tutar tam sonuç gibi gösterilmez.
 
-**Fon evreni kuralı (kritik):** Yatırım fonu tarafı "adında ALTIN geçenler" —
-ancak **"ALTINCI"/"ON ALTINCI"** (sıra sayısı) elenir, **"GOLD"** geçenler eklenir
-ama **"GOLDEN ..."** elenir. Bu kural 04.09.2026 itibarıyla **49 fon** veriyor ve
-geçmiş seriyi %0,005 sapmayla yeniden üretiyor. Emeklilik tarafı **17 fon**:
-`fonTurAciklama ∈ {Altın Fonu, Altın Katılım Fonu}` **birleşim** unvan kuralı.
-Birleşim gerekli çünkü TEFAS, Garanti Emeklilik'in ALTIN EMEKLİLİK YATIRIM
-FONU'nu (`EMY`) "Kıymetli Madenler" olarak sınıflıyor: tür filtresi tek başına
-bu fonu kaçırıyordu (04.09.2026'da eklendi).
+**Altın fon evreni kuralı (kritik):** Yatırım fonu tarafı "adında ALTIN
+geçenler" — ancak **"ALTINCI"/"ON ALTINCI"** (sıra sayısı) elenir, **"GOLD"**
+geçenler eklenir ama **"GOLDEN ..."** elenir. Bu kural 04.09.2026 itibarıyla
+**49 fon** veriyor. Emeklilik tarafı **17 fon**: `fonTurAciklama ∈ {Altın Fonu,
+Altın Katılım Fonu}` **birleşim** unvan kuralı. Birleşim gerekli çünkü TEFAS,
+Garanti Emeklilik'in ALTIN EMEKLİLİK YATIRIM FONU'nu (`EMY`) "Kıymetli
+Madenler" olarak sınıflıyor: tür filtresi tek başına bu fonu kaçırıyordu
+(04.09.2026'da eklendi).
 
 Evren kod listesiyle değil kuralla belirlendiği için TEFAS'a çıkan yeni bir fon
 rapora kendiliğinden girer — GLL (GOLDEN GLOBAL PORTFÖY ALTIN KATILIM FONU)
 20.08.2026'da böyle eklendi; kurucu adındaki "GOLDEN" yalnızca "GOLD" dalını
 eler, unvandaki "ALTIN" fonu doğru biçimde alır. Sayının sessizce kaymasını
 `tests/test_gold_universe.py` engeller: evren değişirse test yeni/düşen kodu
-adıyla söyler, incelendikten sonra kilit güncellenir. Aynı test emeklilik
-tarafındaki elle tutulan listeyi 3. raporun TEFAS'tan tazelediği evrenle
-karşılaştırır (yeni bir altın emeklilik fonu grup raporunda sessizce eksik
-kalmasın diye).
+adıyla söyler, incelendikten sonra kilit güncellenir.
 
-```bash
-env -u PYTHONPATH .venv/bin/python 2_tefas_altin_akis/tefas_akis.py --bootstrap
-env -u PYTHONPATH .venv/bin/python 2_tefas_altin_akis/tefas_akis.py
-env -u PYTHONPATH .venv/bin/python 2_tefas_altin_akis/tefas_akis.py --no-fetch
-env -u PYTHONPATH .venv/bin/python 2_tefas_altin_akis/tefas_akis.py --yerel-kopya
-```
-
-Çıktı: repo içindeki `tefas_net_akis.html`.
-
-**`--yerel-kopya`** (her iki TEFAS üreticisinde): raporun `~/Documents`
-altındaki yerel kopyasını ve `~/Documents/TEFAS_Altin_Fonlari_Akis.xlsx`
-çalışma kitabını (sayfalar: Özet / Fiyat / Tedavüldeki Pay Sayısı / Net Akış)
-da yazar. Varsayılan koşu `~/Documents`'a hiç dokunmaz — rapor zaten repo
-içine, `site/`'a ve panoya gidiyor; her koşuda oraya 10 dosya bırakmak
-gereksizdi.
-
-### 3_tefas_fon_akis_maili
-
-Hesap yöntemi 2. maddeyle **birebir aynı**; farkı, sonucu grup toplamı yerine fon
-bazında göstermesi. Rapor tanımları `raporlar/*.json` içinde, motor
-yapılandırılabilir:
-
-```bash
-env -u PYTHONPATH .venv/bin/python 3_tefas_fon_akis_maili/tefas_secili.py --rapor altin --bootstrap
-env -u PYTHONPATH .venv/bin/python 3_tefas_fon_akis_maili/tefas_secili.py --rapor secili
-env -u PYTHONPATH .venv/bin/python 3_tefas_fon_akis_maili/secili_mail.py --dry-run
-env -u PYTHONPATH .venv/bin/python 3_tefas_fon_akis_maili/secili_yenile.py --no-push
-```
+**`--yerel-kopya`**: raporun `~/Documents` altındaki yerel kopyasını da yazar.
+Varsayılan koşu `~/Documents`'a hiç dokunmaz — rapor zaten repo içine, `site/`'a
+ve panoya gidiyor.
 
 Tüm yerel çıktıları tek bir yayın klasöründe ve ana sayfada toplamak için:
 
@@ -174,8 +114,8 @@ evreninin nasıl belirlendiğini söyler:
 | `toplam` | Türetilmiş: kaynak raporların önbelleklerini toplar | `gruplar` |
 
 - `raporlar/altin.json` — YAT tarafı unvan kuralı 49 fon, EMK tarafı 17 fon.
-  Eski grup bazlı raporla ortak 395 günde **%0,000 sapmayla** aynı sonucu
-  veriyor; iki üreticinin evreni testle eşitleniyor.
+  Grup toplamı `gruplar` raporunun ALT-YAT/ALT-EMK satırlarında; ayrı bir
+  altın-toplam üreticisi yok.
 - `raporlar/secili.json` + `fonlar.json` — elle seçilmiş fon listesi.
 - Fon grubu raporları (`tur`): **kıymetli maden 67+25=92**, para piyasası
   81+13=94, borçlanma araçları 85+45=130, katılım 109+85=194, hisse senedi
@@ -232,14 +172,16 @@ env -u PYTHONPATH .venv/bin/python 3_tefas_fon_akis_maili/tefas_secili.py \
 ## Zamanlama
 
 `.github/workflows/production.yml` hafta içi (Pzt–Cuma) `cron: "7 8 * * 1-5"`
-ile 08:07 UTC'de (11:07 TRT) otomatik tetiklenir: tüm üreticileri `--dry-run`
-ile çalıştırır (yerel HTML üretir, mail **gönderilmez**), sırayla `build_site.py`
-ile site'ı ve `scripts/build_research_artifacts.py` ile dashboard artifact'lerini
-üretir, sonra `kpostaagasi/finansal-raporlar` reposuna push ederek GitHub
-Pages'e yayınlar. Gerçek mail gönderimi bu workflow'da yoktur — yalnızca
-mail script'lerinin kendi `allow_send` ayarı elle açıldığında, ayrı bir
-çalıştırmayla olur. `smoke.yml` zamanlanmamıştır; yalnızca elle
-(`workflow_dispatch`) tetiklenip kaynak erişimini test eder.
+ile 08:07 UTC'de (11:07 TRT) otomatik tetiklenir: tüm üreticileri çalıştırır,
+sırayla `build_site.py` ile site'ı ve `scripts/build_research_artifacts.py` ile
+dashboard artifact'lerini üretir, sonra `kpostaagasi/finansal-raporlar`
+reposuna push ederek GitHub Pages'e yayınlar. `smoke.yml` zamanlanmamıştır;
+yalnızca elle (`workflow_dispatch`) tetiklenip kaynak erişimini test eder.
+
+GitHub'ın `schedule` tetikleyicisi "best effort"tur: bu depoda gerçek
+tetiklenme hedeften 4–12 saat gecikebiliyor (private repo, düşük öncelik).
+Dakika hassasiyeti gerekirse tetik dışarıdan atılmalı
+(`gh workflow run production.yml`); `workflow_dispatch` gecikmiyor.
 
 ---
 
