@@ -2,7 +2,19 @@ name: Günlük rapor üretimi + yayın (Mac'siz)
 
 on:
   schedule:
-    # Hafta içi 11:07 TRT = 08:07 UTC (tam saat başı yoğunluğundan kaçınır)
+    # Hedef: 11:07 TRT = 08:07 UTC. GitHub'ın schedule teslimatı bu depoda
+    # 27.08.2026'dan beri 4.5-12 saat gecikiyor (ölçüm: hedef 08:07 UTC,
+    # gerçek tetikleme 12:41-20:10 UTC). Cron'da düzeltilecek bir şey yok;
+    # tek çare erken saatlerden itibaren birden çok kayıt bırakıp hangisi
+    # zamanında gelirse onu kullanmak. Hangi tetikleme gelirse gelsin
+    # gerçek kararı aşağıdaki 'kapi' işi verir: hedef saatten önce ya da
+    # bugün zaten yayınlanmışsa koşu atlanır (birkaç saniyelik boş iş).
+    - cron: "7 2 * * 1-5"
+    - cron: "7 3 * * 1-5"
+    - cron: "7 4 * * 1-5"
+    - cron: "7 5 * * 1-5"
+    - cron: "7 6 * * 1-5"
+    - cron: "7 7 * * 1-5"
     - cron: "7 8 * * 1-5"
   workflow_dispatch:
 
@@ -10,7 +22,45 @@ permissions:
   contents: read
 
 jobs:
+  kapi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      calis: ${{ steps.karar.outputs.calis }}
+    steps:
+      - id: karar
+        env:
+          OLAY: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          # Elle tetikleme her zaman çalışır (yeniden yayın kastıdır).
+          if [ "$OLAY" != "schedule" ]; then
+            echo "calis=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # 1) Hedef saatten önce gelen erken cron'lar: atla.
+          if (( 10#$(date -u +%H%M) < 807 )); then
+            echo "::notice::$(date -u +%H:%M) UTC < 08:07 UTC hedefi — atlandı."
+            echo "calis=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # 2) Bugün zaten yayınlanmışsa atla. Tek doğru kaynak yayınlanan
+          #    site: report_status.json'daki en yeni last_successful_run.
+          #    Site okunamazsa fail-open (iki kez yayınlamak, hiç
+          #    yayınlamamaktan iyidir; yayın adımı idempotent).
+          son=$(curl -fsS --max-time 20 \
+                  https://kpostaagasi.github.io/finansal-raporlar/report_status.json \
+                | jq -r '[.[].last_successful_run // empty] | max // ""') || son=""
+          if [ "${son:0:10}" = "$(TZ=Europe/Istanbul date +%F)" ]; then
+            echo "::notice::Bugün zaten yayınlanmış ($son) — atlandı."
+            echo "calis=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "calis=true" >> "$GITHUB_OUTPUT"
+
   uretim:
+    needs: kapi
+    if: needs.kapi.outputs.calis == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
