@@ -6,6 +6,12 @@ tablosunda tanımlı, tek kaynak). Raporlar GitHub Actions'ta üretilip
 `kpostaagasi/finansal-raporlar` deposuna push edilerek GitHub Pages'te
 yayınlanır.
 
+> **Uyarı:** Bu depo kişisel bir veri işleme projesidir. Üretilen raporlar
+> yalnızca bilgilendirme amaçlıdır, **yatırım tavsiyesi değildir**. Veriler
+> üçüncü taraf kaynaklardan (TEFAS, Yahoo Finance, ABD Hazinesi) otomatik
+> çekilir; doğruluğu, eksiksizliği veya güncelliği garanti edilmez. Verilerin
+> kullanım koşulları ilgili kaynaklara aittir.
+
 Proje Python 3.14 venv'iyle doğrulanmıştır. Kurulum:
 
 ```bash
@@ -108,7 +114,7 @@ evreninin nasıl belirlendiğini söyler:
 
 | `kapsam.tip` | Evren nereden gelir | Kullanan raporlar |
 |---|---|---|
-| `liste` | Elle seçilmiş kod listesi (`fonlar.json`) | `secili` (25 fon) |
+| `liste` | Elle seçilmiş kod listesi (`fonlar.json`) | `secili` (20 fon) |
 | `altin` | Unvan kuralı ∪ altın emeklilik fon türleri | `altin` (49 + 17 fon) |
 | `tur` | TEFAS fon türü (`fonTurAciklama`), istenirse ∪ `unvan_kurali` | `kiymetli_maden`, `para_piyasasi`, `borclanma`, `katilim`, `hisse` |
 | `toplam` | Türetilmiş: kaynak raporların önbelleklerini toplar | `gruplar` |
@@ -171,17 +177,34 @@ env -u PYTHONPATH .venv/bin/python 3_tefas_fon_akis_maili/tefas_secili.py \
 
 ## Zamanlama
 
-`.github/workflows/production.yml` hafta içi (Pzt–Cuma) `cron: "7 8 * * 1-5"`
-ile 08:07 UTC'de (11:07 TRT) otomatik tetiklenir: tüm üreticileri çalıştırır,
-sırayla `build_site.py` ile site'ı ve `scripts/build_research_artifacts.py` ile
-dashboard artifact'lerini üretir, sonra `kpostaagasi/finansal-raporlar`
-reposuna push ederek GitHub Pages'e yayınlar. `smoke.yml` zamanlanmamıştır;
-yalnızca elle (`workflow_dispatch`) tetiklenip kaynak erişimini test eder.
+`.github/workflows/production.yml` hafta içi (Pzt–Cuma) hedef 08:07 UTC'de
+(11:07 TRT) çalışır: tüm üreticileri çalıştırır, sırayla `build_site.py` ile
+site'ı ve `scripts/build_research_artifacts.py` ile dashboard artifact'lerini
+üretir, sonra `kpostaagasi/finansal-raporlar` reposuna push ederek GitHub
+Pages'e yayınlar. `smoke.yml` zamanlanmamıştır; yalnızca elle
+(`workflow_dispatch`) tetiklenip kaynak erişimini test eder.
 
-GitHub'ın `schedule` tetikleyicisi "best effort"tur: bu depoda gerçek
-tetiklenme hedeften 4–12 saat gecikebiliyor (private repo, düşük öncelik).
-Dakika hassasiyeti gerekirse tetik dışarıdan atılmalı
-(`gh workflow run production.yml`); `workflow_dispatch` gecikmiyor.
+GitHub'ın `schedule` tetikleyicisi "best effort"tur ve bu depoda hedeften
+saatlerce geç gelebiliyor. Bu yüzden 05:07–11:07 TRT arasında saatlik birden
+çok cron kaydı var; `kapi` işi hedef saatten önce gelenleri ve o gün zaten
+yayın yapılmışsa sonrakileri atlar. Dakika hassasiyeti gerekirse tetik
+dışarıdan atılmalı (`gh workflow run production.yml`); `workflow_dispatch`
+gecikmiyor.
+
+Public depolarda GitHub, 60 gün boyunca depo aktivitesi olmazsa zamanlanmış
+workflow'ları otomatik kapatır. Bu depoya günlük commit gitmediği için `kapi`
+işi her zamanlanmış koşuda workflow'u API ile yeniden etkinleştirerek sayacı
+sıfırlar.
+
+### Gerekli secret
+
+| Secret | Açıklama |
+|---|---|
+| `RAPORLAR_DEPLOY_KEY` | `kpostaagasi/finansal-raporlar` deposuna yazma yetkili deploy key'in özel anahtarı |
+
+Fork'ta çalıştırmak için kendi yayın deposunuzu, bu secret'ı ve
+`production.yml` / `scripts/research_report_data.py` içindeki
+`kpostaagasi.github.io/finansal-raporlar` adreslerini kendinize göre değiştirin.
 
 ---
 
@@ -198,3 +221,11 @@ gerekiyor. Tarayıcıdan (GET) açılınca 404 döner, bu normaldir.
 
 Tek istekte en çok ~28 günlük pencere çekilebiliyor, rate limit ~6 istek/dakika.
 Bu yüzden `--bootstrap` uzun sürüyor ve pencere pencere ilerliyor.
+
+---
+
+## Lisans
+
+Kod [MIT lisansı](LICENSE) ile dağıtılır. Depodaki TEFAS veri önbellekleri
+(`*_veri.json`) ve üretilen raporlar kaynak verinin kullanım koşullarına
+tabidir.
