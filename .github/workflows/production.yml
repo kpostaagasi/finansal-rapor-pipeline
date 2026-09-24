@@ -1,21 +1,13 @@
 name: Günlük rapor üretimi + yayın (Mac'siz)
 
 on:
+  # Asıl tetikleyici cron-job.org: hafta içi 11:07 TRT'de bu workflow'u
+  # workflow_dispatch API'siyle başlatır. GitHub'ın schedule teslimatı bu
+  # hesapta 4.5-12 saat gecikiyor; aşağıdaki kayıt yalnızca yedek. Dış
+  # tetikleme o gün yayınladıysa 'kapi' işi yedek koşuyu atlar. Yedek, ana
+  # koşu (~15-20 dk) bitmeden gelmesin diye iki saat sonraya kondu.
   schedule:
-    # Hedef: 11:07 TRT = 08:07 UTC. GitHub'ın schedule teslimatı bu depoda
-    # 27.08.2026'dan beri 4.5-12 saat gecikiyor (ölçüm: hedef 08:07 UTC,
-    # gerçek tetikleme 12:41-20:10 UTC). Cron'da düzeltilecek bir şey yok;
-    # tek çare erken saatlerden itibaren birden çok kayıt bırakıp hangisi
-    # zamanında gelirse onu kullanmak. Hangi tetikleme gelirse gelsin
-    # gerçek kararı aşağıdaki 'kapi' işi verir: hedef saatten önce ya da
-    # bugün zaten yayınlanmışsa koşu atlanır (birkaç saniyelik boş iş).
-    - cron: "7 2 * * 1-5"
-    - cron: "7 3 * * 1-5"
-    - cron: "7 4 * * 1-5"
-    - cron: "7 5 * * 1-5"
-    - cron: "7 6 * * 1-5"
-    - cron: "7 7 * * 1-5"
-    - cron: "7 8 * * 1-5"
+    - cron: "7 10 * * 1-5"    # 13:07 TRT (yedek)
   workflow_dispatch:
 
 permissions:
