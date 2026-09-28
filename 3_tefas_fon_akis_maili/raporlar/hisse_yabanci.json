@@ -1,0 +1,29 @@
+{
+  "ad": "hisse_yabanci",
+  "baslik": "TEFAS Yabancı Hisse Senedi Fonlarına Net Akış",
+  "kapsam": {
+    "tip": "tur",
+    "turler": {
+      "YAT": [
+        "Hisse Senedi Şemsiye Fonu"
+      ],
+      "EMK": [
+        "Hisse Senedi Fonu",
+        "Katılım Hisse Senedi Fonu"
+      ]
+    },
+    "unvan_kurali": "yabanci_hisse",
+    "unvan_kurali_sart": true
+  },
+  "fon_tipleri": [
+    "YAT",
+    "EMK"
+  ],
+  "cache": "hisse_yabanci_veri.json",
+  "html": "tefas_hisse_yabanci_akis.html",
+  "desktop": "~/Documents/TEFAS_Yabanci_Hisse_Akis.html",
+  "github_path": "tefas_hisse_yabanci.html",
+  "url": "https://kpostaagasi.github.io/finansal-raporlar/tefas_hisse_yabanci.html",
+  "mail_ad": "TEFAS Yabancı Hisse Senedi Fonlarına Net Akış",
+  "_not": "Hisse senedi raporunun yabancı karşılığı: TEFAS tür alanında ayrım yok, evren unvanla bulunuyor (bkz. yabanci_hisse_unvani). Kesişim (unvan_kurali_sart) şart: yalnız 'Hisse Senedi Şemsiye Fonu' türündeki 'Yabancı Hisse Senedi' fonları girer."
+}

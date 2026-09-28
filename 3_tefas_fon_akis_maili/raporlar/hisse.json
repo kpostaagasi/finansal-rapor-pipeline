@@ -11,7 +11,8 @@
         "Hisse Senedi Fonu",
         "Katılım Hisse Senedi Fonu"
       ]
-    }
+    },
+    "haric_unvan_kurali": "yabanci_hisse"
   },
   "fon_tipleri": [
     "YAT",

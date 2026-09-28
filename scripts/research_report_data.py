@@ -198,6 +198,7 @@ REQUIRED_FUND_REPORTS = (
     "money_market",
     "participation",
     "equity",
+    "foreign_equity",
     "debt",
     "fund_groups",
 )

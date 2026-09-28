@@ -65,6 +65,12 @@ REPORTS = (
         "target": "tefas_hisse.html",
     },
     {
+        "title": "TEFAS Yabancı Hisse Senedi Fonlarına Net Akış",
+        "description": "Yabancı hisse senedi yatırım fonlarının fon bazında net giriş ve çıkışları (yerel hisse senedi raporunda yer almaz).",
+        "source": "3_tefas_fon_akis_maili/tefas_hisse_yabanci_akis.html",
+        "target": "tefas_hisse_yabanci.html",
+    },
+    {
         "title": "TEFAS Borçlanma Araçları Fonlarına Net Akış",
         "description": "Borçlanma araçları yatırım ve emeklilik fonlarının fon bazında net giriş ve çıkışları.",
         "source": "3_tefas_fon_akis_maili/tefas_borclanma_akis.html",

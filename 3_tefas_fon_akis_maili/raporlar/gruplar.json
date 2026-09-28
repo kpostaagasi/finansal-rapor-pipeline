@@ -33,6 +33,11 @@
         "kod": "HIS",
         "grup": "Hisse senedi fonları",
         "rapor": "hisse"
+      },
+      {
+        "kod": "YHS",
+        "grup": "Yabancı hisse senedi fonları",
+        "rapor": "hisse_yabanci"
       }
     ]
   },

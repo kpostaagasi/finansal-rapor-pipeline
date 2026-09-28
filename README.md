@@ -121,7 +121,7 @@ evreninin nasıl belirlendiğini söyler:
 |---|---|---|
 | `liste` | Elle seçilmiş kod listesi (`fonlar.json`) | `secili` (17 fon) |
 | `altin` | Unvan kuralı ∪ altın emeklilik fon türleri | `altin` (49 + 17 fon) |
-| `tur` | TEFAS fon türü (`fonTurAciklama`), istenirse ∪ `unvan_kurali` | `kiymetli_maden`, `para_piyasasi`, `borclanma`, `katilim`, `hisse` |
+| `tur` | TEFAS fon türü (`fonTurAciklama`); istenirse ∪ `unvan_kurali`, ∩ `unvan_kurali_sart` veya `haric_unvan_kurali` ile daraltılır | `kiymetli_maden`, `para_piyasasi`, `borclanma`, `katilim`, `hisse`, `hisse_yabanci` |
 | `toplam` | Türetilmiş: kaynak raporların önbelleklerini toplar | `gruplar` |
 
 - `raporlar/altin.json` — YAT tarafı unvan kuralı 49 fon, EMK tarafı 17 fon.
@@ -138,6 +138,15 @@ evreninin nasıl belirlendiğini söyler:
   düşük çıkar. Türler `kapsam.turler` içinde fon tipine göre ayrı listelenir;
   TEFAS'ın tür adı değişirse kapsam sessizce boşalmaz, rapor metadata'sındaki
   `expected_count` düşer ve dashboard `Eksik veri` gösterir.
+- `raporlar/hisse_yabanci.json` — **yabancı hisse senedi fonları** (28.09.2026:
+  12 fon, tamamı YAT). TEFAS tür alanında yabancı/yerel ayrımı yok — hepsi
+  "Hisse Senedi Şemsiye Fonu" — evren unvandan bulunuyor (`yabanci_hisse`
+  kuralı: unvanda hem `YABANCI` hem `HİSSE SENEDİ`). "Yabancı" tek başına
+  yetmez: fon sepetleri, yabancı borçlanma araçları ve Kuveyt Türk de bu kelimeyi
+  taşıyor. `hisse` raporu bu fonları `haric_unvan_kurali` ile dışarıda tutar
+  (234 → 222 fon), `hisse_yabanci` ise `unvan_kurali_sart` ile yalnız kesişimi
+  alır; iki raporun evreni ayrık. Dashboard'da **Yabancı Hisse Senedi**
+  sekmesi, grup raporunda ise YHS-YAT satırı.
 - **Kıymetli maden evreni şemsiye türüyle tanımlanamaz** (`unvan_kurali:
   kiymetli_maden`). TEFAS altın katılım fonlarını "Katılım Şemsiye Fonu",
   gümüş fonlarını çoğunlukla "Fon Sepeti"/"Serbest" altında sınıflıyor: yalnız
@@ -146,8 +155,10 @@ evreninin nasıl belirlendiğini söyler:
   PLATİN, PALADYUM, KIYMETLİ MADEN) ve altın evrenini kapsadığı testle
   kilitli. Unvan tuzakları: `GÜMÜŞSUYU` semt adıdır, `ÖZEL BANKACILIK VE
   PLATİNUM` hizmet segmentidir, `MADENCİLİK` sektör fonudur — üçü de elenir.
-- `raporlar/gruplar.json` — grup bazında akış, **12 satır** (6 grup × YAT/EMK;
-  altın, kıymetli maden, para piyasası, borçlanma, katılım, hisse senedi).
+- `raporlar/gruplar.json` — grup bazında akış, **19 satır** (7 kaynak rapor:
+  altın, kıymetli maden, para piyasası, borçlanma, katılım, hisse senedi,
+  yabancı hisse senedi; her kaynak YAT/EMK + birleşik TUM satırı üretir —
+  yabancı hisse kaynağında emeklilik fonu olmadığı için yalnız YHS-YAT).
   **Veri çekmez**, kaynak raporların önbelleklerini toplar; bu yüzden onlardan
   **sonra** çalışmalıdır (workflow'da sıra böyle). Gruptaki bir fonun akışı
   hesaplanamıyorsa o günün grup toplamı boş bırakılır.
@@ -155,7 +166,7 @@ evreninin nasıl belirlendiğini söyler:
   **Satırlar tematik, ayrık değil — bu yüzden toplanamaz.** Altının 66 fonunun
   tamamı kıymetli maden satırında; altın/gümüş katılım fonları hem kıymetli
   maden hem katılım satırında; "Katılım Hisse Senedi Fonu" hem katılım hem
-  hisse satırında. 12 satırda 810 satır-fon ama **703 tekil fon** var. Üretici
+  hisse satırında. 19 satırda 1632 satır-fon ama **703 tekil fon** var. Üretici
   örtüşme haritasını hesaplayıp `RAW.ortak` ve `metadata.overlap_pairs`
   alanlarına yazıyor; sayfa örtüşen satırlar birlikte seçildiğinde dönem
   toplamı yerine **"— örtüşen gruplar"** gösteriyor (ayrık seçimde normal

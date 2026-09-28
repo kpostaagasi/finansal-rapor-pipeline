@@ -69,7 +69,7 @@ def report_html(raw: dict, expected: int, count_label: str = "fon") -> str:
 
 
 def build(module, selected_funds: dict[str, list[float]]):
-    """Sekiz raporun tamamını sentetik HTML'lerden kurar."""
+    """Dokuz raporun tamamını sentetik HTML'lerden kurar."""
     satirli = lambda satirlar, birim="fon": report_html(
         {
             "d": DATES,
@@ -81,7 +81,7 @@ def build(module, selected_funds: dict[str, list[float]]):
     )
     sources = {}
     for key in ("gold_by_fund", "precious_metals", "money_market",
-                "participation", "equity", "debt"):
+                "participation", "equity", "foreign_equity", "debt"):
         sources[key] = satirli({"AFO": [1.0, 2.0]})
     sources["selected_funds"] = satirli(selected_funds)
     sources["fund_groups"] = satirli({"PAR-YAT": [5.0, 6.0]}, birim="grup")
@@ -124,6 +124,7 @@ class ResearchArtifactTests(unittest.TestCase):
                 "money_market": "Para Piyasası Fonlarına Net Akış",
                 "participation": "Katılım Fonlarına Net Akış",
                 "equity": "Hisse Senedi Fonlarına Net Akış",
+                "foreign_equity": "Yabancı Hisse Senedi Fonlarına Net Akış",
                 "debt": "Borçlanma Araçları Fonlarına Net Akış",
                 "fund_groups": "Fon Gruplarına Net Akış",
             },

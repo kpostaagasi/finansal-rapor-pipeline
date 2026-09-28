@@ -93,6 +93,8 @@ FUND_REPORTS = (
      ("3_tefas_fon_akis_maili", "tefas_katilim_akis.html")),
     ("equity", "Hisse Senedi Fonlarına Net Akış",
      ("3_tefas_fon_akis_maili", "tefas_hisse_akis.html")),
+    ("foreign_equity", "Yabancı Hisse Senedi Fonlarına Net Akış",
+     ("3_tefas_fon_akis_maili", "tefas_hisse_yabanci_akis.html")),
     ("debt", "Borçlanma Araçları Fonlarına Net Akış",
      ("3_tefas_fon_akis_maili", "tefas_borclanma_akis.html")),
     ("fund_groups", "Fon Gruplarına Net Akış",

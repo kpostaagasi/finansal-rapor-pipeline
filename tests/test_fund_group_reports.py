@@ -143,6 +143,59 @@ class TypeScopeTests(unittest.TestCase):
             self.module.kapsam_kurallari(cfg)
         self.assertIn("bilinmeyen unvan kuralı", str(ctx.exception))
 
+    def test_foreign_equity_scope_splits_the_equity_universe(self):
+        """Yabancı hisse fonları yerel hisse raporundan ayrılır.
+
+        TEFAS tür alanında yabancı/yerel ayrımı yok (hepsi "Hisse Senedi
+        Şemsiye Fonu"); evren unvanla bulunuyor. "Yabancı" tek başına yeterli
+        değil — fon sepetleri, yabancı borçlanma araçları ve Kuveyt Türk de bu
+        kelimeyi taşıyor. Yönetici markası GLOBAL MD'nin fonları ise "Hisse
+        Senedi" deseler de yabancı değil. Örnekler gerçek TEFAS unvanlarıdır.
+        """
+        kural = self.module.yabanci_hisse_unvani
+        for unvan in (
+            "AK PORTFÖY AMERİKA YABANCI HİSSE SENEDİ FONU",
+            "GARANTİ PORTFÖY YABANCI TEKNOLOJİ HİSSE SENEDİ FONU",
+            "ZİRAAT PORTFÖY S&P/OIC COMCEC (İSEDAK) 50 ŞARİAH ŞİRKETLERİ YABANCI HİSSE SENEDİ FONU",
+        ):
+            with self.subTest(unvan=unvan):
+                self.assertTrue(kural(unvan))
+        for unvan in (
+            "GLOBAL MD PORTFÖY BİRİNCİ HİSSE SENEDİ FONU(HİSSE SENEDİ YOĞUN FON)",
+            "AK PORTFÖY HİSSE SENEDİ (TL) FONU (HİSSE SENEDİ YOĞUN FON)",
+            "AK PORTFÖY PETROL YABANCI BYF FON SEPETİ FONU",
+            "İŞ PORTFÖY YABANCI BORÇLANMA ARAÇLARI FONU",
+            "KUVEYT TÜRK PORTFÖY KUVEYT TÜRK YABANCI KATILIM SERBEST ÖZEL FON",
+        ):
+            with self.subTest(unvan=unvan):
+                self.assertFalse(kural(unvan))
+
+        # Kapsam ayrımı yalnız kuralda değil, rapor configlerinde bağlı:
+        # hisse raporu yabancıları dışarıda tutar, yabancı raporu şart olarak
+        # arar (ikisi de unvan kuralı olmadan sessizce aynı evreni verirdi).
+        hisse = json.loads((RAPOR_DIZIN / "hisse.json").read_text(encoding="utf-8"))
+        yabanci = json.loads(
+            (RAPOR_DIZIN / "hisse_yabanci.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(hisse["kapsam"].get("haric_unvan_kurali"), "yabanci_hisse")
+        self.assertEqual(yabanci["kapsam"].get("unvan_kurali"), "yabanci_hisse")
+        self.assertTrue(yabanci["kapsam"].get("unvan_kurali_sart"))
+        self.assertEqual(hisse["kapsam"]["turler"], yabanci["kapsam"]["turler"])
+
+        # Aynı tür, iki farklı kapsam: yerel hisse fonu yalnız yerel raporda,
+        # yabancı fon yalnız yabancı raporda.
+        haritalar = {"YAT": {"AFA": "Hisse Senedi Şemsiye Fonu",
+                             "AK3": "Hisse Senedi Şemsiye Fonu"}}
+        istenen = {"YAT": ("Hisse Senedi Şemsiye Fonu",)}
+        yerel = self.module.TurKapsami(haritalar, istenen, haric=kural)
+        yabanci = self.module.TurKapsami(haritalar, istenen, kural, unvan_sart=True)
+        yabanci_ad = "AK PORTFÖY AMERİKA YABANCI HİSSE SENEDİ FONU"
+        yerel_ad = "AK PORTFÖY HİSSE SENEDİ (TL) FONU (HİSSE SENEDİ YOĞUN FON)"
+        self.assertFalse(yerel("AFA", yabanci_ad, "YAT"))
+        self.assertTrue(yerel("AK3", yerel_ad, "YAT"))
+        self.assertTrue(yabanci("AFA", yabanci_ad, "YAT"))
+        self.assertFalse(yabanci("AK3", yerel_ad, "YAT"))
+
     def test_fund_types_are_not_mixed_across_fund_type_sides(self):
         """EMK türü YAT tarafında, YAT türü EMK tarafında kapsam açmamalı."""
         kapsam = self.kapsam(yat_turleri=("Para Piyasası Fonu",),
@@ -653,7 +706,7 @@ class ReportConfigTests(unittest.TestCase):
 
     def test_every_report_config_is_complete(self):
         beklenen = {"altin", "secili", "kiymetli_maden", "para_piyasasi",
-                    "borclanma", "katilim", "hisse", "gruplar"}
+                    "borclanma", "katilim", "hisse", "hisse_yabanci", "gruplar"}
         bulunan = {p.stem for p in RAPOR_DIZIN.glob("*.json")}
         self.assertEqual(bulunan, beklenen)
         for ad in sorted(bulunan):
@@ -686,7 +739,7 @@ class ReportConfigTests(unittest.TestCase):
         kaynaklar = {r["source"] for r in build_site.REPORTS}
         self.assertEqual(len(hedefler), len(build_site.REPORTS), "yayın adı tekrarı var")
         for ad in ("kiymetli_maden", "para_piyasasi", "borclanma", "katilim",
-                   "hisse", "gruplar", "altin", "secili"):
+                   "hisse", "hisse_yabanci", "gruplar", "altin", "secili"):
             cfg = json.loads((RAPOR_DIZIN / f"{ad}.json").read_text(encoding="utf-8"))
             with self.subTest(rapor=ad):
                 self.assertIn(cfg["github_path"], hedefler)
@@ -695,9 +748,8 @@ class ReportConfigTests(unittest.TestCase):
     def test_group_report_sources_are_fund_level_reports(self):
         gruplar = json.loads((RAPOR_DIZIN / "gruplar.json").read_text(encoding="utf-8"))
         kaynaklar = gruplar["kapsam"]["kaynaklar"]
-        self.assertEqual(len(kaynaklar), 6)
+        self.assertEqual(len(kaynaklar), 7)
         kodlar = set()
-        beklenen_satir = 0
         for kaynak in kaynaklar:
             with self.subTest(kaynak=kaynak["rapor"]):
                 yol = RAPOR_DIZIN / f"{kaynak['rapor']}.json"
@@ -709,13 +761,12 @@ class ReportConfigTests(unittest.TestCase):
                 self.assertTrue(alt.get("cache"))
                 self.assertNotIn(kaynak["kod"], kodlar, "grup kodu tekrarı")
                 kodlar.add(kaynak["kod"])
-                # Her kaynak YAT+EMK'nin ikisini de kapsıyor: toplam_satirlari
-                # bu yüzden her kaynak için üçüncü bir birleşik TUM satırı da
-                # üretir (bkz. GroupTotalTests). Bu kontrol önbelleğe değil,
-                # yalnızca konfige bakar.
+                # Birleşik TUM satırı yalnız kaynakta iki tip de VERİ bulunduğunda
+                # üretilir (toplam_satirlari); yabancı hisse raporunda emeklilik
+                # fonu yok, o yüzden toplam satır sayısı veriye bağlıdır —
+                # burada yalnız her kaynağın konfig beyanı tutarlılığı kontrol
+                # edilir.
                 self.assertEqual(set(alt["fon_tipleri"]), {"YAT", "EMK"})
-                beklenen_satir += len(alt["fon_tipleri"]) + 1
-        self.assertEqual(beklenen_satir, 18)
 
     def test_group_report_declares_that_its_rows_overlap(self):
         """Tematik satırlar ayrık değil; sayfa bunu bilmeli ve toplam iddia etmemeli."""

@@ -160,12 +160,41 @@ def kiymetli_maden_unvani(unvan):
     return "PLATIN" in u and "BANKACILIK" not in u
 
 
-# Tür bazlı kapsamların isteğe bağlı unvan kuralı: tür eşleşmese de unvan
+def yabanci_hisse_unvani(unvan):
+    """Unvan yabancı hisse senedi fonuna işaret ediyor mu?
+
+    TEFAS yabancı/yerel ayrımını tür alanında taşımıyor: evrendeki 12 yabancı
+    hisse senedi fonunun tamamı "Hisse Senedi Şemsiye Fonu" türünde ve
+    unvanında "Yabancı Hisse Senedi" geçiyor. Yalnız "YABANCI" yeterli
+    değil — fon sepetleri (Yabancı BYF), yabancı borçlanma araçları fonları
+    ve Kuveyt Türk de bu kelimeyi taşıyor; "Hisse Senedi" ile kesişimi
+    evreni tam olarak ayırıyor. Yönetici markası GLOBAL MD'nin fonları
+    (GNH, EC2) "Hisse Senedi" deseler de "Yabancı" demiyor, yerel kalıyor.
+    """
+    u = unvan.upper().replace("İ", "I")
+    return "YABANCI" in u and "HISSE SENEDI" in u
+
+
+
+
+# Tür bazlı kapsamların isteğe bağlı unvan kuralları: tür eşleşmese de unvan
 # fonu evrene alabilir (raporlar/*.json içinde `kapsam.unvan_kurali`).
+# `unvan_kurali_sart` ile tersi de ifade edilebilir: tür eşleşse bile unvan
+# kuralı sağlanmıyorsa fon dışarıda kalır. `haric_unvan_kurali` ise tür
+# eşleşmesinden bağımsız olarak fonu dışarıda tutar.
 UNVAN_KURALLARI = {
     "altin": altin_unvani,
     "kiymetli_maden": kiymetli_maden_unvani,
+    "yabanci_hisse": yabanci_hisse_unvani,
 }
+
+
+def unvan_kurali(cfg, anahtar):
+    """`kapsam.<anahtar>` alanındaki kural adını çözer (yoksa None)."""
+    ad = cfg["kapsam"].get(anahtar)
+    if ad is not None and ad not in UNVAN_KURALLARI:
+        raise ValueError(f"bilinmeyen unvan kuralı: {ad}")
+    return UNVAN_KURALLARI.get(ad)
 
 
 def tur_haritasi(fon_tipi, deneme=3):
@@ -197,26 +226,36 @@ def tur_haritasi(fon_tipi, deneme=3):
 
 
 class TurKapsami:
-    """Fon türüne (istenirse tür VEYA unvan kuralına) dayalı kapsam.
+    """Fon türüne dayalı kapsam; istenirse tür VEYA unvan kuralı, istenirse
+    yalnız ikisinin kesişimi (`unvan_sart`) ve türden bağımsız eleme
+    (`haric`).
 
     Türü TEFAS yönetim bilgisi ucunda görünmeyen ve unvan kuralına da uymayan
-    fonlar sessizce elenmez: `bilinmeyen` kümesinde toplanıp metadata'da ifşa
-    edilir.
+    fonlar sessizce elenmez: `bilinmeyen` kümesinde toplanıp metadata'da
+    ifşa edilir.
     """
 
-    def __init__(self, haritalar, istenen, unvan_kurali=None):
+    def __init__(self, haritalar, istenen, unvan_kurali=None,
+                 unvan_sart=False, haric=None):
         self.haritalar = haritalar
         self.istenen = istenen
         self.unvan_kurali = unvan_kurali
+        self.unvan_sart = unvan_sart
+        self.haric = haric
         self.bilinmeyen = set()
 
     def __call__(self, kod, unvan, tip):
         if kod in TASFIYE:
             return False
+        if self.haric is not None and self.haric(unvan):
+            return False
         tur = self.haritalar.get(tip, {}).get(kod)
-        if tur is not None and tur in self.istenen.get(tip, ()):
-            return True
-        if self.unvan_kurali is not None and self.unvan_kurali(unvan):
+        tur_ok = tur is not None and tur in self.istenen.get(tip, ())
+        if self.unvan_kurali is not None:
+            unvan_ok = self.unvan_kurali(unvan)
+            if (tur_ok and unvan_ok) if self.unvan_sart else (tur_ok or unvan_ok):
+                return True
+        elif tur_ok:
             return True
         if tur is None:
             self.bilinmeyen.add(kod)
@@ -265,19 +304,31 @@ def kapsam_kurallari(cfg):
         log(f"  altın emeklilik fonu: {len(emk)} kod")
         return AltinKapsami(emk)
     if k["tip"] == "tur":
-        kural_adi = k.get("unvan_kurali")
-        if kural_adi is not None and kural_adi not in UNVAN_KURALLARI:
-            raise ValueError(f"bilinmeyen unvan kuralı: {kural_adi}")
-        kural = UNVAN_KURALLARI.get(kural_adi)
+        kural = unvan_kurali(cfg, "unvan_kurali")
+        haric = unvan_kurali(cfg, "haric_unvan_kurali")
         haritalar, istenen = {}, {}
         for tip in cfg["fon_tipleri"]:
             haritalar[tip] = tur_haritasi(tip)
             istenen[tip] = tuple(k["turler"].get(tip, ()))
             kapsamda = sum(1 for t in haritalar[tip].values() if t in istenen[tip])
             log(f"  {tip}: türle {kapsamda} fon, {len(istenen[tip])} tür"
-                + (f", ek olarak '{kural_adi}' unvan kuralı" if kural else ""))
-        return TurKapsami(haritalar, istenen, kural)
+                + (f", ek olarak '{k['unvan_kurali']}' unvan kuralı" if kural else "")
+                + (f", '{k['haric_unvan_kurali']}' unvan kuralı hariç" if haric else ""))
+        return TurKapsami(haritalar, istenen, kural,
+                          unvan_sart=k.get("unvan_kurali_sart", False), haric=haric)
     raise ValueError(f"bilinmeyen kapsam tipi: {k['tip']}")
+
+
+def elenen_kodlar(kapsam, adlar):
+    """Kapsam dışı bırakılan fon kodları — yalnız unvan kuralı elemesi.
+
+    Tür eşleşmesi TEFAS yönetim bilgi ucundan gelir ve o uca ara sıra
+    ulaşılamıyor; türü geçici olarak bulunamayan fonu önbellekten silmek veri
+    kaybı olurdu. Unvan kuralı ise deterministik: elenen kod bu rapora geri
+    gelmez, önbellekten temizlenebilir.
+    """
+    haric = getattr(kapsam, "haric", None)
+    return {kod for kod, ad in adlar.items() if haric is not None and haric(ad)}
 
 
 def istenen_kodlar(cfg):
@@ -414,6 +465,17 @@ def veri_guncelle(cfg, tam=False):
     # Türü TEFAS yönetim bilgisi ucunda görünmeyen fonlar kapsam dışı kaldı;
     # sessizce düşmesinler diye önbelleğe yazılıp metadata'da raporlanır.
     kaydet(yeni, kapsamda.bilinmeyen)
+    # Kapsam dışı bırakılan fonlar önbellekte kalırdı: kapsam yalnızca çekim
+    # sırasında uygulanıyor, rapor ise önbelleği okuyor. Unvan kuralıyla
+    # elenenler (ör. hisse raporundaki yabancı hisse fonları) temizlenir.
+    elenen = elenen_kodlar(kapsamda, onbellek.get("ad", {}))
+    if elenen:
+        for kod in elenen:
+            onbellek["fon"].pop(kod, None)
+            onbellek["ad"].pop(kod, None)
+            onbellek["tip"].pop(kod, None)
+        log(f"  kapsam dışı {len(elenen)} fon önbellekten temizlendi: "
+            + ", ".join(sorted(elenen)))
     if kapsamda.bilinmeyen:
         log(f"  türü bilinmeyen {len(kapsamda.bilinmeyen)} fon kapsam dışı: "
             + ", ".join(sorted(kapsamda.bilinmeyen)))

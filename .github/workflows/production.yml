@@ -136,6 +136,7 @@ jobs:
           calistir_tefas para_piyasasi tefas_para_piyasasi.html
           calistir_tefas katilim tefas_katilim.html
           calistir_tefas hisse tefas_hisse.html
+          calistir_tefas hisse_yabanci tefas_hisse_yabanci.html
           calistir_tefas borclanma tefas_borclanma.html
           # gruplar türetilmiş rapor: kaynak raporların önbelleklerini toplar,
           # bu yüzden EN SON çalışmalı.
