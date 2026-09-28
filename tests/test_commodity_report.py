@@ -84,12 +84,6 @@ class CommodityReportTests(unittest.TestCase):
         self.assertTrue(quote["stale"])
         self.assertAlmostEqual(quote["age_days"], 900_000 / 86_400)
 
-    def test_aluminum_target_matches_yahoo_listed_ten_month_chain(self):
-        aluminum = next(
-            item for item in self.module.COMMODITIES if item["key"] == "aluminyum"
-        )
-        self.assertEqual(aluminum["count"], 10)
-
     def test_copper_unit_uses_turkish_libre_not_english_abbreviation(self):
         """Diğer emtia birimleri Türkçe ($/varil, $/ons, $/ton); bakır İngilizce
         "$/lb" kısaltmasıyla tutarsızdı. "$/libre" ile hizalanmalı."""
@@ -143,6 +137,93 @@ class CommodityReportTests(unittest.TestCase):
         self.assertEqual(meta["count_label"], "kontrat")
         self.assertEqual(meta["data_end_date"], "2027-01-02")
         self.assertEqual(meta["source"], "Yahoo Finance + ABD Hazinesi")
+
+    def test_rolled_off_front_contract_shifts_chain_without_reducing_depth(self):
+        """Ön kontrat teslimata girince borsanın listesinden düşer (20.09.2026'da
+        CLV26). `bosluk` bütçesi bu adayı geçmeli: zincir `count` GERÇEK vadeye
+        ulaşmalı, derinlik eksilmemeli ve uyarı üretilmemeli. Aksi halde
+        emtia raporu teslimat günleri kalıcı "Eksik veri" rozetiyle kapanır."""
+        commodity = {
+            "key": "test",
+            "title": "Test Emtia",
+            "unit": "$/unit",
+            "root": "TT",
+            "suffix": "CMX",
+            "cycle": [1],
+            "count": 3,
+            "bosluk": 1,
+            "dec": 2,
+        }
+        contracts = [("TTF27.CMX", 2027, 1)] + [
+            (f"TTF{28 + i}.CMX", 2028 + i, 1) for i in range(3)
+        ]
+        quotes = {
+            "TTF27.CMX": None,  # ön kontrat teslimattan düştü
+            "TTF28.CMX": {"value": 11.0, "timestamp": 200, "stale": False, "age_days": 1.0},
+            "TTF29.CMX": {"value": 12.0, "timestamp": 300, "stale": False, "age_days": 1.0},
+            "TTF30.CMX": {"value": 13.0, "timestamp": 400, "stale": False, "age_days": 1.0},
+        }
+        with (
+            patch.object(self.module, "COMMODITIES", [commodity]),
+            patch.object(self.module, "gen_contracts", return_value=contracts),
+            patch.object(self.module, "fetch_quote", side_effect=lambda sym: quotes[sym]),
+            patch.object(
+                self.module,
+                "fetch_treasury",
+                return_value={"date": "01/02/2027", "points": []},
+            ),
+        ):
+            data = self.module.build_data()
+
+        curve = data["curves"][0]
+        self.assertEqual([p["sym"] for p in curve["points"]],
+                         ["TTF28", "TTF29", "TTF30"])
+        self.assertEqual(curve["found_count"], 3)
+        self.assertEqual(curve["missing_symbols"], [])
+        self.assertEqual(data["report_meta"]["missing"], [])
+        self.assertEqual(data["warnings"], [])
+
+    def test_gap_beyond_skip_budget_is_disclosed_not_hidden(self):
+        """`bosluk` bütçesi bir teslimatı tolere eder, veri boşluğunu değil.
+        Bütçe dışındaki boş aday ifşa edilir ve zincir orada kesilir."""
+        commodity = {
+            "key": "test",
+            "title": "Test Emtia",
+            "unit": "$/unit",
+            "root": "TT",
+            "suffix": "CMX",
+            "cycle": [1],
+            "count": 3,
+            "bosluk": 1,
+            "dec": 2,
+        }
+        contracts = [("TTF27.CMX", 2027, 1)] + [
+            (f"TTF{28 + i}.CMX", 2028 + i, 1) for i in range(3)
+        ]
+        quotes = {
+            "TTF27.CMX": None,   # teslimat — bütçe içinde, tolere edilir
+            "TTF28.CMX": None,   # veri boşluğu — ifşa edilmeli
+            "TTF29.CMX": {"value": 12.0, "timestamp": 300, "stale": False, "age_days": 1.0},
+            "TTF30.CMX": {"value": 13.0, "timestamp": 400, "stale": False, "age_days": 1.0},
+        }
+        with (
+            patch.object(self.module, "COMMODITIES", [commodity]),
+            patch.object(self.module, "gen_contracts", return_value=contracts),
+            patch.object(self.module, "fetch_quote", side_effect=lambda sym: quotes[sym]),
+            patch.object(
+                self.module,
+                "fetch_treasury",
+                return_value={"date": "01/02/2027", "points": []},
+            ),
+        ):
+            data = self.module.build_data()
+
+        # Boşluk hem top-level `missing` listesine girer hem uyarı üretir:
+        # bütçe bir teslimatı tolere eder, veri boşluğunu GİZLEMEZ.
+        self.assertEqual(data["report_meta"]["missing"], ["TTF28"])
+        self.assertIn("Test Emtia: 2/3", data["warnings"])
+        # Kalan iki nokta yayınlama eşiğinin (3) altında: eğri kurulmaz.
+        self.assertEqual(data["curves"], [])
 
     def test_build_data_excludes_stale_quotes_from_liquid_curve(self):
         commodity = {

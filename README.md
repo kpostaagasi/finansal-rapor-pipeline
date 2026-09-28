@@ -34,6 +34,11 @@ eğrisi (WTI `CL`, altın `GC`, gümüş `SI`, platin `PL`, bakır `HG`, alümin
 — Yahoo Finance `v8/finance/chart` kontrat sembolleri) + ABD Hazine getiri eğrisi
 (treasury.gov `daily-treasury-rates.csv`) + vadeler arası faiz diferansiyeli.
 5 günden eski fiyatlı kontratlar (vadesi geçmiş/likiditesiz) eğriden düşülür.
+`COMMODITIES` içindeki `count` istenen zincir derinliğidir, borsanın o metada
+fiyatladığı kontrat sayısı değil: teslimattan düşen ön kontrat (ör. `CLV26`)
+ve listelenmeyen uzak vade (ör. `ALIN27`) bu derinliğe dahil değildir, zincir
+onları `bosluk` bütçesiyle geçer. Bütçe dışındaki boş aday gerçek veri
+boşluğudur — rapor `Eksik veri` rozetiyle belirtir.
 
 ```bash
 env -u PYTHONPATH .venv/bin/python 1_emtia_tahvil_maili/emtia_report.py
@@ -114,7 +119,7 @@ evreninin nasıl belirlendiğini söyler:
 
 | `kapsam.tip` | Evren nereden gelir | Kullanan raporlar |
 |---|---|---|
-| `liste` | Elle seçilmiş kod listesi (`fonlar.json`) | `secili` (20 fon) |
+| `liste` | Elle seçilmiş kod listesi (`fonlar.json`) | `secili` (17 fon) |
 | `altin` | Unvan kuralı ∪ altın emeklilik fon türleri | `altin` (49 + 17 fon) |
 | `tur` | TEFAS fon türü (`fonTurAciklama`), istenirse ∪ `unvan_kurali` | `kiymetli_maden`, `para_piyasasi`, `borclanma`, `katilim`, `hisse` |
 | `toplam` | Türetilmiş: kaynak raporların önbelleklerini toplar | `gruplar` |

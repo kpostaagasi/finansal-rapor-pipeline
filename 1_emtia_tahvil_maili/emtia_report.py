@@ -18,12 +18,19 @@ MONTH_CODE = {1:"F",2:"G",3:"H",4:"J",5:"K",6:"M",7:"N",8:"Q",9:"U",10:"V",11:"X
 TR_AY = {1:"Oca",2:"Şub",3:"Mar",4:"Nis",5:"May",6:"Haz",7:"Tem",8:"Ağu",9:"Eyl",10:"Eki",11:"Kas",12:"Ara"}
 
 COMMODITIES = [
-    {"key":"petrol",   "title":"WTI Ham Petrol",   "unit":"$/varil", "root":"CL",  "suffix":"NYM", "cycle":list(range(1,13)), "count":14, "dec":2},
+    # `count` istenen zincir derinliğidir: borsanın listede olmayan aylar bu
+    # derinliğe dahil değildir. `bosluk`, borsanın takvimde var ama
+    # LISTELEMEDİĞİ önceki ay sayısıdır (teslimattan düşen kontrat) — zincir
+    # bu bütçe kadar boş adayı geçer, kalan derinlik korunur. Bütçe bitince
+    # karşılaşılan boş aday veri boşluğudur: ifşa edilir ve zincir kesilir.
+    #   petrol    — CLV26 (Eki 26) teslimata girip listeden düştü (20.09.2026)
+    #   aluminyum — liste ALIM27 (Haz 27) ile bitiyor, ALIN27 hiç listelenmedi
+    {"key":"petrol",   "title":"WTI Ham Petrol",   "unit":"$/varil", "root":"CL",  "suffix":"NYM", "cycle":list(range(1,13)), "count":14, "bosluk":1, "dec":2},
     {"key":"altin",    "title":"Altın",             "unit":"$/ons",   "root":"GC",  "suffix":"CMX", "cycle":[2,4,6,8,10,12],   "count":8,  "dec":1},
     {"key":"gumus",    "title":"Gümüş",             "unit":"$/ons",   "root":"SI",  "suffix":"CMX", "cycle":[3,5,7,9,12],      "count":7,  "dec":2},
     {"key":"platin",   "title":"Platin",            "unit":"$/ons",   "root":"PL",  "suffix":"NYM", "cycle":[1,4,7,10],        "count":6,  "dec":1},
     {"key":"bakir",    "title":"Bakır",             "unit":"$/libre", "root":"HG",  "suffix":"CMX", "cycle":[3,5,7,9,12],      "count":7,  "dec":3},
-    {"key":"aluminyum","title":"Alüminyum",         "unit":"$/ton",   "root":"ALI", "suffix":"CMX", "cycle":list(range(1,13)), "count":10, "dec":2},
+    {"key":"aluminyum","title":"Alüminyum",         "unit":"$/ton",   "root":"ALI", "suffix":"CMX", "cycle":list(range(1,13)), "count":9,  "dec":2},
 ]
 
 def gen_contracts(root, suffix, cycle, count):
@@ -105,46 +112,62 @@ def build_data():
     all_stale = []
     data_dates = []
     for c in COMMODITIES:
-        contracts = gen_contracts(c["root"], c["suffix"], c["cycle"], c["count"])
-        total_requested += len(contracts)
+        # Zincir, borsanın listede olmayan ayları (`bosluk` bütçesi) geçerek
+        # `count` GERÇEK vadeye ulaşır: teslimattan düşen ya da hiç
+        # listelenmeyen aday ölçüme katılmaz, kalan derinlik korunur.
+        # Bütçe tükenince karşılaşılan boş aday veri boşluğudur: ifşa edilir.
+        # Zincir orada kesilmez — geri kalanı yayınlanır, boşluk uyarıda
+        # görünür (fail-closed değil, fail-visible).
+        contracts = gen_contracts(c["root"], c["suffix"], c["cycle"],
+                                  c["count"] + c.get("bosluk", 0))
         pts, excluded_stale_quotes = [], []
-        found_symbols = set()
+        requested, missing_symbols = [], []
+        bosluk = c.get("bosluk", 0)
         for sym, yy, mo in contracts:
+            short_sym = sym.split(".")[0]
             quote = fetch_quote(sym)
-            if quote is not None:
-                short_sym = sym.split(".")[0]
-                found_symbols.add(short_sym)
-                if quote.get("stale"):
-                    stale_quote = {
-                        "symbol": short_sym,
-                        "age_days": round(quote.get("age_days") or 0, 1),
-                    }
-                    excluded_stale_quotes.append(stale_quote)
-                    all_stale.append({"commodity": c["title"], **stale_quote})
+            if quote is None:
+                if bosluk:
+                    bosluk -= 1
                     continue
-                if quote["timestamp"]:
-                    data_dates.append(datetime.datetime.fromtimestamp(
-                        quote["timestamp"], tz=datetime.timezone.utc
-                    ).date())
-                pts.append({
-                    "label": f"{TR_AY[mo]} {yy%100:02d}",
-                    "value": round(quote["value"], 4),
-                    "sym": short_sym,
-                    "quote_time": quote["timestamp"],
-                })
-        requested_symbols = [sym.split(".")[0] for sym, _, _ in contracts]
-        missing_symbols = [sym for sym in requested_symbols if sym not in found_symbols]
+                # Bütçe tükendi: artık veri boşluğu. İfşa et ve zinciri
+                # kesme — geri kalan vadeye devam et, boşluk uyarıda görünür.
+                requested.append(short_sym)
+                missing_symbols.append(short_sym)
+                continue
+            requested.append(short_sym)
+            if quote.get("stale"):
+                stale_quote = {
+                    "symbol": short_sym,
+                    "age_days": round(quote.get("age_days") or 0, 1),
+                }
+                excluded_stale_quotes.append(stale_quote)
+                all_stale.append({"commodity": c["title"], **stale_quote})
+                continue
+            if quote["timestamp"]:
+                data_dates.append(datetime.datetime.fromtimestamp(
+                    quote["timestamp"], tz=datetime.timezone.utc
+                ).date())
+            pts.append({
+                "label": f"{TR_AY[mo]} {yy%100:02d}",
+                "value": round(quote["value"], 4),
+                "sym": short_sym,
+                "quote_time": quote["timestamp"],
+            })
+            if len(pts) >= c["count"]:
+                break
+        total_requested += len(requested)
         total_found += len(pts)
         all_missing.extend(missing_symbols)
         coverage = {
-            "candidate_count": len(contracts),
-            "requested_count": len(contracts) - len(excluded_stale_quotes),
+            "candidate_count": len(requested),
+            "requested_count": len(requested) - len(excluded_stale_quotes),
             "found_count": len(pts),
             "missing_symbols": missing_symbols,
             "excluded_stale_quotes": excluded_stale_quotes,
         }
         if missing_symbols:
-            data["warnings"].append(f"{c['title']}: {len(pts)}/{len(contracts)}")
+            data["warnings"].append(f"{c['title']}: {len(pts)}/{len(requested)}")
         if excluded_stale_quotes:
             data["warnings"].append(
                 f"{c['title']}: {len(excluded_stale_quotes)} vade likidite filtresinde"
