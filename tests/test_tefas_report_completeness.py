@@ -23,12 +23,70 @@ class TefasReportCompletenessTests(unittest.TestCase):
         template = (MODULE_PATH.parent / "secili_template.html").read_text(encoding="utf-8")
         self.assertIn("const REPORT_META = __REPORT_META__;", template)
 
+    def test_liquidated_fund_is_excluded_from_type_scoped_universe(self):
+        """TASFIYE kodu tür-tabanlı kapsamdan elenir: veri basmayı bırakan fon
+        0/0 basıyor, akışı ölçülemiyor ve rapor kalıcı "Eksik veri" rozetiyle
+        kapanıyordu (THF/TLV 25.09.2026)."""
+        module = load_module()
+        kod = next(k for k in module.TASFIYE)
+        kapsam = module.TurKapsami(
+            {"YAT": {kod: "Hisse Senedi Şemsiye Fonu"}},
+            {"YAT": ("Hisse Senedi Şemsiye Fonu",)},
+        )
+        self.assertFalse(kapsam(kod, "TEST FON", "YAT"))
+        # Türü bilinmeyen fon kümeye girmemeye devam ediyor.
+        self.assertFalse(kapsam("BILINMEYEN", "BILINMEYEN FON", "YAT"))
+        self.assertIn("BILINMEYEN", kapsam.bilinmeyen)
+
+    def test_liquidated_fund_does_not_empty_a_list_scope(self):
+        """Liste kapsamı yalnızca tasfiye kodundan ibaretse boşalmamalı:
+        filtre kapsamı değil, akış ölçümünü kaldırmalı."""
+        module = load_module()
+        kod = next(k for k in module.TASFIYE)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "fonlar.json").write_text(
+                json.dumps({"fonlar": [kod, "RNP"]}), encoding="utf-8"
+            )
+            template = root / "template.html"
+            template.write_text(
+                "__FON_N__/__ISTENEN_N__|__EKSIK_NOT__|const REPORT_META = __REPORT_META__;|__RAW__",
+                encoding="utf-8",
+            )
+            output = root / "report.html"
+            module.HERE = str(root)
+            module.TEMPLATE = str(template)
+            cfg = {
+                "baslik": "Seçili Fonlar",
+                "kapsam": {"tip": "liste", "dosya": "fonlar.json"},
+                "html": str(output),
+                "desktop": str(root / "desktop.html"),
+            }
+            cache = {
+                "fon": {
+                    kod: {"2024-12-30": [100, 1], "2024-12-31": [110, 1]},
+                    "RNP": {"2024-12-30": [50, 1]},
+                },
+                "ad": {kod: "Tasfiye Fonu", "RNP": "RNP Fonu"},
+                "tip": {kod: "YAT", "RNP": "YAT"},
+            }
+
+            module.html_uret(cfg, cache)
+            rendered = output.read_text(encoding="utf-8")
+
+        meta = json.loads(re.search(r"const REPORT_META = (\{.*?\});", rendered).group(1))
+        # Beklenen küme boşalmaz: iki kod da "istenmiş" sayılır, tasfiye kodu
+        # yalnızca bulunamadı olarak görünür.
+        self.assertEqual(meta["expected_count"], 2)
+        self.assertEqual(meta["found_count"], 0)
+        self.assertEqual(sorted(meta["missing"]), sorted([kod, "RNP"]))
+
     def test_list_report_discloses_missing_requested_fund_codes(self):
         module = load_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "fonlar.json").write_text(
-                json.dumps({"fonlar": ["PHE", "RNP"]}), encoding="utf-8"
+                json.dumps({"fonlar": ["AAA", "RNP"]}), encoding="utf-8"
             )
             template = root / "template.html"
             template.write_text(
@@ -46,9 +104,9 @@ class TefasReportCompletenessTests(unittest.TestCase):
                 "desktop": str(root / "desktop.html"),
             }
             cache = {
-                "fon": {"PHE": {"2024-12-30": [100, 1], "2024-12-31": [110, 1]}},
-                "ad": {"PHE": "Pusula Portföy Hisse Senedi Fonu"},
-                "tip": {"PHE": "YAT"},
+                "fon": {"AAA": {"2024-12-30": [100, 1], "2024-12-31": [110, 1]}},
+                "ad": {"AAA": "Test Fonu"},
+                "tip": {"AAA": "YAT"},
             }
 
             module.html_uret(cfg, cache)

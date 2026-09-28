@@ -16,17 +16,16 @@ class SelectedFundConfigTests(unittest.TestCase):
         # eksik fonları). PHE/PBR/THF/TMV 18.09.2026'da çıkarıldı: SPK Bülteni
         # 2026/60 Tera ve Pusula fonlarını TEFAS'ta işleme kapattı, bu dördü
         # tasfiye listesinde olmadığı için veri basmaya devam edip akışı
-        # kalıcı sıfırda kalacak. Tasfiye listesindeki TLY/TP2/PRY/PNU/PCS
-        # bilerek bırakıldı — tasfiye çıkışı raporun ölçtüğü akış olayıdır.
-        # ZFZ 18.09.2026'da çıkarıldı; bültenle ilgisi yok, fon TEFAS'tan
-        # tamamen silindi (uç geçmiş tarihler için de kayıt döndürmüyor).
+        # kalıcı sıfırda kalacak. ZFZ 18.09.2026'da çıkarıldı; bültenle
+        # ilgisi yok, fon TEFAS'tan tamamen silindi. TLY/TP2/PCS 27.09.2026'da
+        # çıkarıldı: PDR/RTA kuralı — 16.09'dan beri fiyat/tedavül 0 basıyorlar,
+        # akış ölçülemiyor. Tasfiye listesindeki PRY/PNU hâlâ veri basıyor ve
+        # ölçtükleri çıkış akışı sürüyor, bu yüzden listede.
         expected = {
-            "TLY", "TP2", "ZFB", "RBH",
-            "BGP", "PPB", "DLY", "PNU", "PRY", "TGR", "ZBJ", "PRD",
-            "ODN", "PAL", "PCS", "PPJ", "PUR", "YOZ",
-            "TZL", "ZPR",
+            "ZFB", "RBH", "BGP", "PPB", "DLY", "PNU", "PRY", "TGR",
+            "ZBJ", "PRD", "ODN", "PAL", "PPJ", "PUR", "YOZ", "TZL", "ZPR",
         }
-        self.assertEqual(len(configured), 20)
+        self.assertEqual(len(configured), 17)
         self.assertEqual(len(set(configured)), len(configured), "kod tekrarı var")
         self.assertEqual(set(configured), expected)
 

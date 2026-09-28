@@ -56,6 +56,23 @@ HEADERS = {
 }
 EMK_ALTIN_TURLERI = ("Altın Fonu", "Altın Katılım Fonu")
 
+# Veri basmayı bırakmış fon kodları: TEFAS son günlerde satır basmaya devam
+# ediyor ama fiyat=0 / tedavül=0 gönderiyor, bu yüzden akış ölçülemiyor ve
+# rapor "Eksik veri" rozetiyle kapanıyor. Kapsam listeden (fonlar.json)
+# çıkarılmakla kalmaz; tür-tabanlı raporlar (katilim, hisse) için de
+# geçerli olmalı, çünkü o raporlar bu listeyi okumaz.
+# 28.09.2026'da tespit edilenler: THF (Tera Portföy Hisse Senedi) ve TLV
+# (Tera Portföy Para Piyasası Katılım) 25.09'dan, PHE (Pusula Portföy Hisse
+# Senedi) 15.09'dan beri 0/0 basıyor. İlk ikisi SKP (Tera), PHE PSP (Pusula)
+# kurucu kodlu — SPK Bülteni 2026/60'ın kapattığı evren. Fon TEFAS'ta
+# tefasDurum=true kaldığı sürece burada tutulur; veri geri gelirse satırı
+# silmek yerine kodu buradan kaldırmak yeterlidir.
+TASFIYE = {
+    "THF": "Tera Portföy Hisse Senedi (TL) Fonu — 25.09.2026'dan beri 0/0",
+    "TLV": "Tera Portföy Para Piyasası Katılım (TL) Fonu — 25.09.2026'dan beri 0/0",
+    "PHE": "Pusula Portföy Hisse Senedi Fonu — 15.09.2026'dan beri 0/0",
+}
+
 
 def log(msg):
     print(f"{dt.datetime.now():%H:%M:%S} — {msg}", file=sys.stderr, flush=True)
@@ -194,6 +211,8 @@ class TurKapsami:
         self.bilinmeyen = set()
 
     def __call__(self, kod, unvan, tip):
+        if kod in TASFIYE:
+            return False
         tur = self.haritalar.get(tip, {}).get(kod)
         if tur is not None and tur in self.istenen.get(tip, ()):
             return True
@@ -491,9 +510,14 @@ def kapsam_durumu(cfg, onbellek):
         raise RuntimeError("raporlanabilir TEFAS tarihi yok")
     son = gunler[-1]
     onceki = tarihler[tarihler.index(son) - 1] if tarihler.index(son) else None
-    mevcut = {k for k, seri in onbellek["fon"].items() if son in seri}
-    onceki_mevcut = ({k for k, seri in onbellek["fon"].items() if onceki in seri}
+    mevcut = {k for k, seri in onbellek["fon"].items() if son in seri and k not in TASFIYE}
+    onceki_mevcut = ({k for k, seri in onbellek["fon"].items()
+                      if onceki in seri and k not in TASFIYE}
                      if onceki else set())
+    # Açık liste kapsamı bir beyandır: kullanıcı fonlar.json'a yazdığı kod
+    # beklenen kümede kalır, TASFIYE filtresi yalnızca türetilmiş (tür/önbellek)
+    # kapsamı etkiler. Aksi halde tasfiye kodu listeden sessizce kaybolur ve
+    # kapsam kaydı yalan söyler.
     istenen = istenen_kodlar(cfg)
     beklenen = set(istenen) if istenen else (mevcut | onceki_mevcut)
     bulunan = mevcut & beklenen
@@ -574,7 +598,7 @@ def html_yaz(cfg, raw, report_meta, fon_ozet, eksik_not, gunler):
 def html_uret(cfg, onbellek):
     durum = kapsam_durumu(cfg, onbellek)
     akis, gunler = durum["akis"], durum["gunler"]
-    kodlar = sorted(onbellek["fon"],
+    kodlar = sorted((k for k in onbellek["fon"] if k not in TASFIYE),
                     key=lambda k: -sum(abs(akis.get(t, {}).get(k, 0)) for t in gunler))
     istenen = set(istenen_kodlar(cfg))
     if istenen:
@@ -696,6 +720,13 @@ def toplam_satirlari(cfg):
             )
         with open(alt["cache"], encoding="utf-8") as f:
             onbellek = json.load(f)
+        # Kaynak rapor kendi kapsamında TASFIYE kodlarını elese de geçmiş
+        # gözlemleri önbellekte kaldığı için burada da filtrelenmeli; yoksa
+        # veri basmayı bırakmış fon grup toplamına sessizce katılmaya devam eder.
+        for anahtar in ("fon", "ad", "tip"):
+            if anahtar in onbellek:
+                onbellek[anahtar] = {k: v for k, v in onbellek[anahtar].items()
+                                     if k not in TASFIYE}
         akis, gunler, _, bosluklar = akis_serisi(onbellek)
         for t, kodlar in bosluklar.items():
             bosluk_gunler.update((k, t) for k in kodlar)
