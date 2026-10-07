@@ -17,15 +17,14 @@ class SelectedFundConfigTests(unittest.TestCase):
         # 2026/60 Tera ve Pusula fonlarını TEFAS'ta işleme kapattı, bu dördü
         # tasfiye listesinde olmadığı için veri basmaya devam edip akışı
         # kalıcı sıfırda kalacak. ZFZ 18.09.2026'da çıkarıldı; bültenle
-        # ilgisi yok, fon TEFAS'tan tamamen silindi. TLY/TP2/PCS 27.09.2026'da
-        # çıkarıldı: PDR/RTA kuralı — 16.09'dan beri fiyat/tedavül 0 basıyorlar,
-        # akış ölçülemiyor. Tasfiye listesindeki PRY/PNU hâlâ veri basıyor ve
-        # ölçtükleri çıkış akışı sürüyor, bu yüzden listede.
+        # ilgisi yok. TLY/TP2/PCS 27.09.2026'da çıkarıldı: PDR/RTA kuralı,
+        # 16.09'dan beri fiyat/tedavül 0, akış ölçülemiyor. 07.10.2026'da
+        # PRY/PNU çıkarıldı: SPK 2026/60 tasfiye listesi, veri bassa da yok.
         expected = {
-            "ZFB", "RBH", "BGP", "PPB", "DLY", "PNU", "PRY", "TGR",
+            "ZFB", "RBH", "BGP", "PPB", "DLY", "TGR",
             "ZBJ", "PRD", "ODN", "PAL", "PPJ", "PUR", "YOZ", "TZL", "ZPR",
         }
-        self.assertEqual(len(configured), 17)
+        self.assertEqual(len(configured), 15)
         self.assertEqual(len(set(configured)), len(configured), "kod tekrarı var")
         self.assertEqual(set(configured), expected)
 

@@ -34,6 +34,8 @@ class TefasReportCompletenessTests(unittest.TestCase):
             {"YAT": ("Hisse Senedi Şemsiye Fonu",)},
         )
         self.assertFalse(kapsam(kod, "TEST FON", "YAT"))
+        self.assertIn("PRY", module.TASFIYE)
+        self.assertIn("PNU", module.TASFIYE)
         # Türü bilinmeyen fon kümeye girmemeye devam ediyor.
         self.assertFalse(kapsam("BILINMEYEN", "BILINMEYEN FON", "YAT"))
         self.assertIn("BILINMEYEN", kapsam.bilinmeyen)

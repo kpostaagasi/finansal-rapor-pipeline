@@ -42,7 +42,7 @@ class TypeScopeTests(unittest.TestCase):
                emk_turleri=("Para Piyasası Fonu",)):
         haritalar = {
             "YAT": {
-                "PRY": "Para Piyasası Şemsiye Fonu",
+                "AAL": "Para Piyasası Şemsiye Fonu",
                 "TLY": "Serbest Şemsiye Fonu",
                 "AFO": "Kıymetli Madenler Şemsiye Fonu",
             },
@@ -53,7 +53,7 @@ class TypeScopeTests(unittest.TestCase):
 
     def test_scope_admits_only_the_requested_fund_types(self):
         kapsam = self.kapsam()
-        self.assertTrue(kapsam("PRY", "PUSULA PORTFÖY PARA PİYASASI (TL) FONU", "YAT"))
+        self.assertTrue(kapsam("AAL", "AK PORTFÖY PARA PİYASASI (TL) FONU", "YAT"))
         self.assertFalse(kapsam("TLY", "TERA PORTFÖY BİRİNCİ SERBEST FON", "YAT"))
         self.assertFalse(kapsam("AFO", "AK PORTFÖY ALTIN FONU", "YAT"))
         self.assertTrue(kapsam("AH1", "... PARA PİYASASI EMEKLİLİK YATIRIM FONU", "EMK"))

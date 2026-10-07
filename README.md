@@ -119,7 +119,7 @@ evreninin nasıl belirlendiğini söyler:
 
 | `kapsam.tip` | Evren nereden gelir | Kullanan raporlar |
 |---|---|---|
-| `liste` | Elle seçilmiş kod listesi (`fonlar.json`) | `secili` (17 fon) |
+| `liste` | Elle seçilmiş kod listesi (`fonlar.json`) | `secili` (15 fon) |
 | `altin` | Unvan kuralı ∪ altın emeklilik fon türleri | `altin` (49 + 17 fon) |
 | `tur` | TEFAS fon türü (`fonTurAciklama`); istenirse ∪ `unvan_kurali`, ∩ `unvan_kurali_sart` veya `haric_unvan_kurali` ile daraltılır | `kiymetli_maden`, `para_piyasasi`, `borclanma`, `katilim`, `hisse`, `hisse_yabanci` |
 | `toplam` | Türetilmiş: kaynak raporların önbelleklerini toplar | `gruplar` |

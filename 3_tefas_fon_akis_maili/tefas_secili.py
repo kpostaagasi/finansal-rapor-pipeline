@@ -56,21 +56,27 @@ HEADERS = {
 }
 EMK_ALTIN_TURLERI = ("Altın Fonu", "Altın Katılım Fonu")
 
-# Veri basmayı bırakmış fon kodları: TEFAS son günlerde satır basmaya devam
-# ediyor ama fiyat=0 / tedavül=0 gönderiyor, bu yüzden akış ölçülemiyor ve
-# rapor "Eksik veri" rozetiyle kapanıyor. Kapsam listeden (fonlar.json)
-# çıkarılmakla kalmaz; tür-tabanlı raporlar (katilim, hisse) için de
-# geçerli olmalı, çünkü o raporlar bu listeyi okumaz.
-# 28.09.2026'da tespit edilenler: THF (Tera Portföy Hisse Senedi) ve TLV
-# (Tera Portföy Para Piyasası Katılım) 25.09'dan, PHE (Pusula Portföy Hisse
-# Senedi) 15.09'dan beri 0/0 basıyor. İlk ikisi SKP (Tera), PHE PSP (Pusula)
-# kurucu kodlu — SPK Bülteni 2026/60'ın kapattığı evren. Fon TEFAS'ta
-# tefasDurum=true kaldığı sürece burada tutulur; veri geri gelirse satırı
-# silmek yerine kodu buradan kaldırmak yeterlidir.
+# Rapor listelerine girmeyen kodlar.
+# 0/0 basanlar: THF/TLV 25.09.2026, PHE 15.09.2026. Veri dönerse kodu sil.
+# SPK Bülteni 2026/60 (17.09.2026, Karar 57/1706-57/1707) tasfiye ünvanları,
+# 07.10.2026 TEFAS eşlemesi. Veri bassalar da (PRY, PNU) listelerde yok.
+# HEDEF İNCİ TEFAS'ta yok. KSA bültende "(TL)" eksik, tek aday.
+# ponytail: sabit kod kümesi; bülten yeni kod eklerse buraya ekle.
 TASFIYE = {
-    "THF": "Tera Portföy Hisse Senedi (TL) Fonu — 25.09.2026'dan beri 0/0",
-    "TLV": "Tera Portföy Para Piyasası Katılım (TL) Fonu — 25.09.2026'dan beri 0/0",
-    "PHE": "Pusula Portföy Hisse Senedi Fonu — 15.09.2026'dan beri 0/0",
+    "THF", "TLV", "PHE",
+    "ABG", "AC4", "AC5", "AC7", "AC8", "AJ1", "AP4", "AP5", "AP6", "BAC",
+    "BBN", "BBO", "BDI", "BDO", "BHH", "BHN", "BI5", "BIK", "BLA", "BMU",
+    "BOH", "BOS", "BP5", "BPZ", "BRT", "BSE", "BSH", "BSN", "BST", "BTJ",
+    "BUC", "BYZ", "CAH", "CBD", "CHY", "CSH", "DFI", "DHI", "DOH", "DRH",
+    "DUH", "FNT", "GCD", "HAT", "HBV", "HDA", "HDH", "HDK", "HEH", "HFI",
+    "HGH", "HGJ", "HIM", "HKJ", "HKM", "HKP", "HLR", "HMK", "HMV", "HPF",
+    "HPH", "HPI", "HPL", "HPP", "HPZ", "HVA", "HVB", "HVC", "HYV", "IAU",
+    "IHY", "KHA", "KHD", "KLH", "KRH", "KSA", "LAI", "LGO", "MGE", "NFK",
+    "OHI", "P1A", "PAB", "PAO", "PBH", "PBY", "PCH", "PCS", "PDC", "PDG",
+    "PDH", "PGE", "PGH", "PHB", "PHN", "PHY", "PKD", "PKM", "PKU", "PKZ",
+    "PMH", "PMP", "PNU", "PO7", "PO8", "PO9", "POB", "POF", "POI", "POS",
+    "POU", "PPO", "PPT", "PRY", "PSE", "PSR", "PST", "PYD", "PYI", "PYR",
+    "SEH", "SHI", "SNY", "T3B", "TLY", "TP2", "UHS", "YLZ",
 }
 
 
