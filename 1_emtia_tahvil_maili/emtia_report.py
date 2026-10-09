@@ -24,13 +24,16 @@ COMMODITIES = [
     # bu bütçe kadar boş adayı geçer, kalan derinlik korunur. Bütçe bitince
     # karşılaşılan boş aday veri boşluğudur: ifşa edilir ve zincir kesilir.
     #   petrol    — CLV26 (Eki 26) teslimata girip listeden düştü (20.09.2026)
-    #   aluminyum — liste ALIM27 (Haz 27) ile bitiyor, ALIN27 hiç listelenmedi
+    #   aluminyum — Yahoo'da liste ALIM27 (Haz 27) ile bitiyor; ALIN27 ve sonrası
+    #               listelenmedi. Zincir listelenen ufka kadar (8) istenir: 9
+    #               istemek ALIN27'yi kalıcı "Eksik veri" yapıyordu (bosluk
+    #               yalnız ÖNDEKİ boşlukları geçer, uçtaki ufku değil).
     {"key":"petrol",   "title":"WTI Ham Petrol",   "unit":"$/varil", "root":"CL",  "suffix":"NYM", "cycle":list(range(1,13)), "count":14, "bosluk":1, "dec":2},
     {"key":"altin",    "title":"Altın",             "unit":"$/ons",   "root":"GC",  "suffix":"CMX", "cycle":[2,4,6,8,10,12],   "count":8,  "dec":1},
     {"key":"gumus",    "title":"Gümüş",             "unit":"$/ons",   "root":"SI",  "suffix":"CMX", "cycle":[3,5,7,9,12],      "count":7,  "dec":2},
     {"key":"platin",   "title":"Platin",            "unit":"$/ons",   "root":"PL",  "suffix":"NYM", "cycle":[1,4,7,10],        "count":6,  "dec":1},
     {"key":"bakir",    "title":"Bakır",             "unit":"$/libre", "root":"HG",  "suffix":"CMX", "cycle":[3,5,7,9,12],      "count":7,  "dec":3},
-    {"key":"aluminyum","title":"Alüminyum",         "unit":"$/ton",   "root":"ALI", "suffix":"CMX", "cycle":list(range(1,13)), "count":9,  "dec":2},
+    {"key":"aluminyum","title":"Alüminyum",         "unit":"$/ton",   "root":"ALI", "suffix":"CMX", "cycle":list(range(1,13)), "count":8,  "dec":2},
 ]
 
 def gen_contracts(root, suffix, cycle, count):

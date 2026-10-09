@@ -36,8 +36,9 @@ eğrisi (WTI `CL`, altın `GC`, gümüş `SI`, platin `PL`, bakır `HG`, alümin
 5 günden eski fiyatlı kontratlar (vadesi geçmiş/likiditesiz) eğriden düşülür.
 `COMMODITIES` içindeki `count` istenen zincir derinliğidir, borsanın o metada
 fiyatladığı kontrat sayısı değil: teslimattan düşen ön kontrat (ör. `CLV26`)
-ve listelenmeyen uzak vade (ör. `ALIN27`) bu derinliğe dahil değildir, zincir
-onları `bosluk` bütçesiyle geçer. Bütçe dışındaki boş aday gerçek veri
+ve listelenmeyen uzak vade (ör. `ALIN27`) bu derinliğe dahil değildir; zincir
+önde kalan boşlukları `bosluk` bütçesiyle geçer, listelenen ufkun ötesini
+(alüminyum: ALIM27) istemez. Bütçe dışındaki boş aday gerçek veri
 boşluğudur — rapor `Eksik veri` rozetiyle belirtir.
 
 ```bash
