@@ -1,2 +1,2 @@
 requests==2.34.2
-certifi==2026.07.22
+certifi==2026.10.18
