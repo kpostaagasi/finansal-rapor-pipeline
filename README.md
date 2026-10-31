@@ -1,4 +1,6 @@
-# Otomatik Rapor Üretimi ve Yayını
+# Finansal Rapor Pipeline
+
+**[Yayınlanan raporlar](https://kpostaagasi.github.io/finansal-raporlar/)**
 
 Yahoo Finance, ABD Hazinesi ve TEFAS verisinden toplam 9 rapor sayfası üreten
 otomasyonların kaynak kodu (yayın adları `build_site.py`'deki `REPORTS`
@@ -12,7 +14,9 @@ yayınlanır.
 > çekilir; doğruluğu, eksiksizliği veya güncelliği garanti edilmez. Verilerin
 > kullanım koşulları ilgili kaynaklara aittir.
 
-Proje Python 3.14 venv'iyle doğrulanmıştır. Kurulum:
+## Kurulum
+
+Proje Python 3.14 venv'iyle doğrulanmıştır.
 
 ```bash
 python3.14 -m venv .venv
